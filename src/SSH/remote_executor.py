@@ -176,7 +176,7 @@ class RemoteExecutor:
                 return paramiko.RSAKey.from_private_key(key_file)
         except Exception as e:
             # Prefer the RSA error message if Ed25519 also failed; otherwise report Ed25519.
-            if 'ed25519_err' in locals() and ed25519_err is not None:
+            if ed25519_err is not None:
                 raise ValueError(
                     f"Failed to parse OpenSSH private key as Ed25519 ({ed25519_err}) or RSA ({e})."
                 )
