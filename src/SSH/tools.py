@@ -42,6 +42,7 @@ def mask_value(value: str | None) -> str:
 
 class BaseResult(TypedDict):
     """Base shape for SSH tool results."""
+
     status: str
     stdout: str
     stderr: str
@@ -50,6 +51,7 @@ class BaseResult(TypedDict):
 
 class RunCommandResult(BaseResult):
     """Result shape for the `run_command` tool."""
+
     command: str
 
 
@@ -57,7 +59,10 @@ class RunCommandResult(BaseResult):
 # Helper utilities (local)
 # -----------------------
 
-def _tcp_reachable(host: str, port: int, timeout: float = 3.0) -> tuple[bool, float | None, str | None]:
+
+def _tcp_reachable(
+    host: str, port: int, timeout: float = 3.0
+) -> tuple[bool, float | None, str | None]:
     """Attempt a TCP connection and measure latency.
 
     Returns:
@@ -101,7 +106,7 @@ def _parse_os_release(text: str) -> dict[str, str | None]:
 def _detect_pkg_manager(out_which: str) -> str | None:
     """Given a combined output of several `command -v` checks, infer a package manager."""
     for mgr in ("apt", "dnf", "yum", "zypper", "pacman", "apk"):
-        if re.search(fr"\b{mgr}\b", out_which):
+        if re.search(rf"\b{mgr}\b", out_which):
             return mgr
     return None
 
@@ -146,32 +151,39 @@ def run_command(
         ) as rx:
             stdout, stderr, rc = rx.run(command)
 
-            
             if rc != 0:
                 raise ValueError(f"Error running command: {stderr}")
 
-            log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
-                "stdout": stdout,
-                "stderr": stderr,
-                "return_code": rc
-            })
+            log_ssh_operation(
+                job_id=job_id,
+                host=creds.host,
+                user=creds.user,
+                command=command,
+                result={"stdout": stdout, "stderr": stderr, "return_code": rc},
+            )
 
             return {
                 "status": "executed",
                 "stdout": stdout.strip(),
                 "stderr": stderr.strip(),
                 "return_code": rc,
-                "command": command
+                "command": command,
             }
     except paramiko.AuthenticationException:
         print(
             f"SSH authentication failed. Debug: HOST={mask_value(creds.host)}, USERNAME={mask_value(creds.user)}, PORT={creds.port}, KEY_FILENAME={mask_value(creds.key)}"
         )
-        log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
-            "stdout": stdout,
-            "stderr": f"Authentication failed: {stderr}",
-            "return_code": rc
-        })
+        log_ssh_operation(
+            job_id=job_id,
+            host=creds.host,
+            user=creds.user,
+            command=command,
+            result={
+                "stdout": stdout,
+                "stderr": f"Authentication failed: {stderr}",
+                "return_code": rc,
+            },
+        )
         raise ValueError(
             "SSH authentication failed. Check your USERNAME and KEY_FILENAME environment variables."
         )
@@ -179,27 +191,36 @@ def run_command(
         print(
             f"SSH connection failed: {e}. Debug: HOST={mask_value(creds.host)}, USERNAME={mask_value(creds.user)}, PORT={creds.port}, KEY_FILENAME={mask_value(creds.key)}"
         )
-        log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
-            "stdout": "",
-            "stderr": f"SSH connection failed: {e}",
-            "return_code": rc
-        })
+        log_ssh_operation(
+            job_id=job_id,
+            host=creds.host,
+            user=creds.user,
+            command=command,
+            result={
+                "stdout": "",
+                "stderr": f"SSH connection failed: {e}",
+                "return_code": rc,
+            },
+        )
         raise ValueError(f"SSH connection failed: {e}")
     except Exception as e:
         print(
             f"Unexpected error during SSH operation: {e}. Debug: HOST={mask_value(creds.host)}, USERNAME={mask_value(creds.user)}, PORT={creds.port}, KEY_FILENAME={mask_value(creds.key)}"
         )
-        log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
-            "stdout": "",
-            "stderr": str(e),
-            "return_code": rc
-        })
+        log_ssh_operation(
+            job_id=job_id,
+            host=creds.host,
+            user=creds.user,
+            command=command,
+            result={"stdout": "", "stderr": str(e), "return_code": rc},
+        )
         raise ValueError(f"Unexpected error during SSH operation: {e}")
 
 
 # ---------------------------------
 # New tool: quick VM reachability
 # ---------------------------------
+
 
 class VMUpResult(TypedDict):
     vm: str
@@ -235,6 +256,7 @@ def ssh_is_vm_up(vm_name: str) -> VMUpResult:
 # ---------------------------------
 # New tool: distro + debug signals
 # ---------------------------------
+
 
 class DistroInfo(TypedDict, total=False):
     id: str | None
@@ -316,10 +338,14 @@ def ssh_vm_distro_info(vm_name: str) -> VMInfoResult:
                         "id": name.lower() if name else None,
                         "version_id": version,
                         "name": name,
-                        "pretty_name": f"{name} {version}" if name and version else None,
+                        "pretty_name": f"{name} {version}"
+                        if name and version
+                        else None,
                     }
                 else:
-                    result["notes"].append("Neither /etc/os-release nor lsb_release available")
+                    result["notes"].append(
+                        "Neither /etc/os-release nor lsb_release available"
+                    )
 
             # 2) Kernel + arch
             out, _, _ = rx.run("uname -r")
@@ -332,9 +358,7 @@ def ssh_vm_distro_info(vm_name: str) -> VMInfoResult:
             result["platform"]["init"] = out.strip() or None
 
             # 4) Package manager detection
-            check_pm = (
-                "command -v apt dnf yum zypper pacman apk 2>/dev/null || true"
-            )
+            check_pm = "command -v apt dnf yum zypper pacman apk 2>/dev/null || true"
             out, _, _ = rx.run(check_pm)
             result["platform"]["pkg_manager"] = _detect_pkg_manager(out)
 

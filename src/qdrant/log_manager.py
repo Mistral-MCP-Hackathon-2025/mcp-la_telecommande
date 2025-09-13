@@ -11,12 +11,7 @@ mistral_model = "mistral-embed"
 client = Mistral(api_key=mistral_api_key)
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    Distance,
-    PointStruct,
-    VectorParams,
-    PayloadSchemaType
-)
+from qdrant_client.models import Distance, PointStruct, VectorParams, PayloadSchemaType
 
 qdrant_url = os.getenv("QDRANT_URL")
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
@@ -29,12 +24,14 @@ qdrant_client = QdrantClient(
 # print("QDRANT_API_KEY:", qdrant_api_key)
 # print("MISTRAL_API_KEY:", mistral_api_key)
 
+
 def embed_text(text: str) -> list[float]:
     response = client.embeddings.create(
         model=mistral_model,
         inputs=[text],
     )
     return response.data[0].embedding
+
 
 def ensure_collections_exist():
     collections_config = {
@@ -43,11 +40,11 @@ def ensure_collections_exist():
             "indexes": {
                 "host": PayloadSchemaType.KEYWORD,
                 "user": PayloadSchemaType.KEYWORD,
-                "command": PayloadSchemaType.KEYWORD, 
+                "command": PayloadSchemaType.KEYWORD,
                 "job_id": PayloadSchemaType.KEYWORD,
                 "timestamp": PayloadSchemaType.FLOAT,
-                "line_number": PayloadSchemaType.INTEGER
-            }
+                "return_code": PayloadSchemaType.INTEGER,
+            },
         },
         "ssh_commands": {
             "description": "SSH commands executed with metadata",
@@ -57,11 +54,11 @@ def ensure_collections_exist():
                 "command": PayloadSchemaType.KEYWORD,
                 "job_id": PayloadSchemaType.KEYWORD,
                 "timestamp": PayloadSchemaType.FLOAT,
-                "return_code": PayloadSchemaType.INTEGER
-            }
+                "return_code": PayloadSchemaType.INTEGER,
+            },
         },
         "ssh_errors": {
-            "description": "SSH errors and stderr outputs", 
+            "description": "SSH errors and stderr outputs",
             "indexes": {
                 "host": PayloadSchemaType.KEYWORD,
                 "user": PayloadSchemaType.KEYWORD,
@@ -69,11 +66,10 @@ def ensure_collections_exist():
                 "job_id": PayloadSchemaType.KEYWORD,
                 "timestamp": PayloadSchemaType.FLOAT,
                 "return_code": PayloadSchemaType.INTEGER,
-                "line_number": PayloadSchemaType.INTEGER
-            }
-        }
+            },
+        },
     }
-    
+
     for collection_name, config in collections_config.items():
         # Créer la collection si elle n'existe pas
         if not qdrant_client.collection_exists(collection_name):
@@ -82,7 +78,7 @@ def ensure_collections_exist():
                 collection_name=collection_name,
                 vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
             )
-        
+
         # Créer les index pour tous les champs de filtrage
         for field_name, field_type in config["indexes"].items():
             try:
@@ -90,21 +86,22 @@ def ensure_collections_exist():
                 qdrant_client.create_payload_index(
                     collection_name=collection_name,
                     field_name=field_name,
-                    field_schema=field_type
+                    field_schema=field_type,
                 )
             except Exception as e:
                 # L'index existe probablement déjà, on continue
                 if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
                     print(f"Index {collection_name}.{field_name} already exists")
                 else:
-                    print(f"Warning: Could not create index {collection_name}.{field_name}: {e}")
+                    print(
+                        f"Warning: Could not create index {collection_name}.{field_name}: {e}"
+                    )
 
 
 def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: dict):
-
     ensure_collections_exist()
     timestamp = time.time()
-    
+
     # Log the command itself
     command_embedding = embed_text(f"COMMAND: {command}")
     qdrant_client.upsert(
@@ -120,11 +117,11 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
                     "command": command,
                     "timestamp": timestamp,
                     "return_code": result["return_code"],
-                }
+                },
             )
-        ]
+        ],
     )
-    
+
     # Log stdout lines
     stdout = result.get("stdout", "")
     # check stdout size is less than the embedding model limit (8192 tokens ~ 6000 words ~ 30000 chars)
@@ -146,12 +143,12 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
                         "command": command,
                         "timestamp": timestamp,
                         "stdout": stdout,
-                        "return_code": result["return_code"]
-                    }
+                        "return_code": result["return_code"],
+                    },
                 )
-            ]
+            ],
         )
-    
+
     # Log stderr lines (errors)
     error = result.get("stderr")
     if len(error) > 30000:
@@ -172,8 +169,8 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
                         "command": command,
                         "timestamp": timestamp,
                         "stderr": error,
-                        "return_code": result["return_code"]
-                    }
+                        "return_code": result["return_code"],
+                    },
                 )
-            ]
+            ],
         )
