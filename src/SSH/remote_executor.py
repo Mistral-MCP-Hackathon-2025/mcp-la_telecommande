@@ -34,8 +34,7 @@ class RemoteExecutor:
         *,
         port: int = 22,
         password: Optional[str] = None,
-        key_filename: Optional[str] = None,
-        key_content: Optional[str] = None,
+        key: Optional[str] = None,
         timeout: Optional[float] = 15.0,
         look_for_keys: bool = True,
         allow_agent: bool = True,
@@ -45,15 +44,14 @@ class RemoteExecutor:
         self.username = username
         self.port = port
         self.password = password
-        self.key_filename = os.path.expanduser(key_filename) if key_filename else None
-        self.key_content = key_content
+        self.key = key
         self.timeout = timeout
         self.look_for_keys = look_for_keys
         self.allow_agent = allow_agent
 
         # Validate that only one key method is provided
-        if key_filename and key_content:
-            raise ValueError("Cannot specify both key_filename and key_content")
+        # if not :
+        #     raise ValueError("Cannot specify both key_filename and key_content")
 
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(known_hosts_policy)
@@ -70,22 +68,22 @@ class RemoteExecutor:
     def connect(self) -> None:
         if self._connected:
             return
-        
+
         # Prepare the private key if key_content is provided
         pkey = None
-        if self.key_content:
+        if self.key:
             try:
-                pkey = self._parse_private_key(self.key_content)
+                pkey = self._parse_private_key(self.key)
             except Exception as e:
                 raise ValueError(f"Failed to parse private key: {e}")
-        
+
         try:
             self._client.connect(
                 hostname=self.hostname,
                 port=self.port,
                 username=self.username,
                 password=self.password,
-                key_filename=self.key_filename,
+                # key_filename=self.key_filename,
                 pkey=pkey,
                 timeout=self.timeout,
                 look_for_keys=self.look_for_keys,
@@ -93,9 +91,13 @@ class RemoteExecutor:
             )
             self._connected = True
         except paramiko.AuthenticationException as e:
-            raise ValueError(f"SSH Authentication failed for {self.username}@{self.hostname}: {e}")
+            raise ValueError(
+                f"SSH Authentication failed for {self.username}@{self.hostname}: {e}"
+            )
         except Exception as e:
-            raise ValueError(f"SSH Connection failed to {self.hostname}:{self.port}: {e}")
+            raise ValueError(
+                f"SSH Connection failed to {self.hostname}:{self.port}: {e}"
+            )
 
     def close(self) -> None:
         if self._connected:
@@ -108,32 +110,37 @@ class RemoteExecutor:
         Attempts to detect and parse RSA, DSS, ECDSA, or Ed25519 keys.
         """
         key_content = key_content.strip()
-        
+
         if "BEGIN OPENSSH PRIVATE KEY" in key_content and "\n" not in key_content:
-            
+
             begin_marker = "-----BEGIN OPENSSH PRIVATE KEY-----"
             end_marker = "-----END OPENSSH PRIVATE KEY-----"
-            
+
             if begin_marker in key_content and end_marker in key_content:
                 start_idx = key_content.find(begin_marker) + len(begin_marker)
                 end_idx = key_content.find(end_marker)
-                
+
                 base64_content = key_content[start_idx:end_idx].strip().replace(" ", "")
-                
-                base64_lines = [base64_content[i:i+64] for i in range(0, len(base64_content), 64)]
-                key_content = begin_marker + "\n" + "\n".join(base64_lines) + "\n" + end_marker
-        
+
+                base64_lines = [
+                    base64_content[i : i + 64]
+                    for i in range(0, len(base64_content), 64)
+                ]
+                key_content = (
+                    begin_marker + "\n" + "\n".join(base64_lines) + "\n" + end_marker
+                )
+
         if "BEGIN OPENSSH PRIVATE KEY" in key_content:
             key_file = io.StringIO(key_content)
             try:
-                if hasattr(paramiko, 'Ed25519Key'):
+                if hasattr(paramiko, "Ed25519Key"):
                     return paramiko.Ed25519Key.from_private_key(key_file)
             except Exception as e:
                 raise ValueError(f"Failed to parse OpenSSH private key as Ed25519: {e}")
-        
+
         key_file = io.StringIO(key_content)
         try:
-            if hasattr(paramiko, 'RSAKey'):
+            if hasattr(paramiko, "RSAKey"):
                 return paramiko.RSAKey.from_private_key(key_file)
         except Exception as e:
             raise ValueError(f"Failed to parse PEM private key as RSA: {e}")
@@ -203,7 +210,7 @@ class RemoteExecutor:
         finally:
             sftp.close()
 
-        exec_cmd = f'{shlex.quote(interpreter)} -lc {shlex.quote(remote_path)}'
+        exec_cmd = f"{shlex.quote(interpreter)} -lc {shlex.quote(remote_path)}"
         return self.run(exec_cmd, timeout=timeout, env=env, get_pty=get_pty)
 
     @staticmethod
@@ -228,4 +235,3 @@ class RemoteExecutor:
 
         # Execute under bash -lc so we get a login-like shell and proper expansions
         return f"/bin/bash -lc {shlex.quote(env_prefix + command)}"
-

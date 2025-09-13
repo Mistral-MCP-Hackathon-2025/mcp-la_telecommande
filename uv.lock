@@ -1582,6 +1582,7 @@ dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "paramiko" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "weave" },
 ]
@@ -1593,6 +1594,7 @@ requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = ">=1.13.1" },
     { name = "paramiko", specifier = ">=3.5.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "ruff", specifier = ">=0.12.12" },
     { name = "weave", specifier = ">=0.52.7" },
 ]

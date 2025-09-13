@@ -1,0 +1,9 @@
+vms:
+  - name: vm1
+    host: 192.168.1.10
+    user: ubuntu
+    port: 22
+    key: |
+      -----BEGIN OPENSSH PRIVATE KEY-----
+      ...
+      -----END OPENSSH PRIVATE KEY-----
