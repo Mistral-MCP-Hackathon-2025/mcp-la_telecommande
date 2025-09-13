@@ -21,10 +21,10 @@ config_manager: ConfigManager = ConfigManager(os.getenv("CONFIG"))
 
 # Validate the loaded configuration schema on startup for early feedback
 try:
-	validate_config_schema(config_manager.raw)
+    validate_config_schema(config_manager.raw)
 except Exception as e:
-	# Surface clear startup error; FastMCP will log the exception
-	raise RuntimeError(f"Invalid configuration schema: {e}")
+    # Surface clear startup error; FastMCP will log the exception
+    raise RuntimeError(f"Invalid configuration schema: {e}")
 
 # ruff: noqa: F401, E402
 import src.SSH

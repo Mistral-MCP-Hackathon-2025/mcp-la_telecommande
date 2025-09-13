@@ -167,8 +167,6 @@ class RemoteExecutor:
                 # Do not abort immediately; some OpenSSH keys may be RSA/ECDSA.
                 # We'll try RSA next; if that fails, we re-raise a clearer error.
                 ed25519_err = e
-            else:
-                ed25519_err = None
 
         key_file = io.StringIO(key_content)
         try:
