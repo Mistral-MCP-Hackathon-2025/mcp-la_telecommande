@@ -7,12 +7,14 @@ configuration manager and SSH tools package. The global `mcp` and
 
 import os
 
+import wandb
 import weave
 from mcp.server.fastmcp import FastMCP
 
 from src.config import ConfigManager
 from src.config.permissions import validate_config_schema
 
+wandb.login(key=os.getenv("WANDB_API_KEY"))
 weave.init("mcp-ssh")
 
 # Create the MCP server
