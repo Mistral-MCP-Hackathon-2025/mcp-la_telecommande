@@ -1,9 +1,15 @@
+"""Paramiko-based SSH utilities for remote command execution.
+
+This module provides a small `RemoteExecutor` class that can open an SSH
+connection, execute commands, and upload+run local scripts on a remote host.
+It aims to be minimal, typed, and safe by default.
+"""
+
 from __future__ import annotations
 
 import io
 import os
 import shlex
-from typing import Dict, Optional, Tuple
 
 import paramiko
 
@@ -33,13 +39,28 @@ class RemoteExecutor:
         username: str,
         *,
         port: int = 22,
-        password: Optional[str] = None,
-        key: Optional[str] = None,
-        timeout: Optional[float] = 15.0,
+        password: str | None = None,
+        key: str | None = None,
+        timeout: float | None = 15.0,
         look_for_keys: bool = True,
         allow_agent: bool = True,
         known_hosts_policy: paramiko.MissingHostKeyPolicy = paramiko.AutoAddPolicy(),
     ):
+        """Create a new `RemoteExecutor`.
+
+        Args:
+            hostname: Target host (DNS or IP).
+            username: SSH username.
+            port: SSH port, default 22.
+            password: Password to authenticate, if any.
+            key: Private key material as a string (OpenSSH or PEM). If None,
+                agent/known keys may be used depending on `look_for_keys` and
+                `allow_agent`.
+            timeout: Socket timeout in seconds, or None for library default.
+            look_for_keys: Whether to search for keys in typical locations.
+            allow_agent: Whether to allow using the SSH agent.
+            known_hosts_policy: Policy for unknown host keys (defaults to auto-add).
+        """
         self.hostname = hostname
         self.username = username
         self.port = port
@@ -49,21 +70,24 @@ class RemoteExecutor:
         self.look_for_keys = look_for_keys
         self.allow_agent = allow_agent
 
-        # Validate that only one key method is provided
-
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(known_hosts_policy)
         self._connected = False
-        self._pkey = None
+        self._pkey: paramiko.PKey | None = None
 
     def __enter__(self) -> "RemoteExecutor":
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
     def connect(self) -> None:
+        """Open the SSH connection if not already connected.
+
+        Raises:
+            ValueError: On authentication failure or connection errors.
+        """
         if self._connected:
             return
 
@@ -97,6 +121,7 @@ class RemoteExecutor:
             )
 
     def close(self) -> None:
+        """Close the SSH connection if it is open."""
         if self._connected:
             self._client.close()
             self._connected = False
@@ -146,11 +171,11 @@ class RemoteExecutor:
         self,
         command: str,
         *,
-        cwd: Optional[str] = None,
-        env: Optional[Dict[str, str]] = None,
-        timeout: Optional[float] = None,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout: float | None = None,
         get_pty: bool = False,
-    ) -> Tuple[str, str, int]:
+    ) -> tuple[str, str, int]:
         """
         Execute a shell command on the remote host.
 
@@ -179,12 +204,12 @@ class RemoteExecutor:
         self,
         local_path: str,
         *,
-        remote_path: Optional[str] = None,
+        remote_path: str | None = None,
         interpreter: str = "/bin/bash",
-        timeout: Optional[float] = None,
-        env: Optional[Dict[str, str]] = None,
+        timeout: float | None = None,
+        env: dict[str, str] | None = None,
         get_pty: bool = False,
-    ) -> Tuple[str, str, int]:
+    ) -> tuple[str, str, int]:
         """
         Upload a local shell script to the remote machine and execute it.
 
@@ -214,9 +239,15 @@ class RemoteExecutor:
     def _prepare_command(
         command: str,
         *,
-        cwd: Optional[str],
-        env: Optional[Dict[str, str]],
+        cwd: str | None,
+        env: dict[str, str] | None,
     ) -> str:
+        """Prepare a shell command with optional env and working directory.
+
+        This safely quotes environment variable values and working directory,
+        then wraps the command under `bash -lc` to ensure a login-like shell
+        with expected expansions.
+        """
         # Build an "export ..." prefix for env vars (safe quoting)
         env_prefix = ""
         if env:
