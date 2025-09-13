@@ -29,22 +29,20 @@ class RunCommandResult(BaseResult):
     command: str
 
 
-def _get_env_creds() -> tuple[str, str, int, str | None]:
-    host = os.getenv("HOST")
-    user = os.getenv("USERNAME")
+def _get_env_creds() -> tuple[str, str, int, str | None, str | None]:
+    host = os.getenv("VM_HOST")
+    user = os.getenv("VM_USERNAME")  # Changed to VM_USERNAME to avoid conflicts
     key_filename = os.getenv("KEY_FILENAME")
+    key_content = os.getenv("KEY")
     port = int(os.getenv("PORT", "22"))
     if not host or not user:
-        raise ValueError(
-            "Missing HOST or USER environment variables for SSH connection"
-        )
-    return host, user, port, key_filename
+        raise ValueError("Missing VM_HOST or VM_USERNAME environment variables for SSH connection")
+    return host, user, port, key_filename, key_content
 
 
 @mcp.tool(
     name="ssh_create_file",
     description="Create an empty file on the remote host using 'touch'.",
-    # tags={"ssh", "filesystem", "remote"},
 )
 def create_file(
     filename: Annotated[str, "Remote filename to create"],
@@ -76,7 +74,6 @@ def create_file(
 @mcp.tool(
     name="ssh_run_command",
     description="Run an arbitrary command on the remote host and return stdout/stderr/rc.",
-    # tags={"ssh", "remote", "exec"},
 )
 def run_command(
     command: Annotated[str, "Shell command to execute remotely"],
