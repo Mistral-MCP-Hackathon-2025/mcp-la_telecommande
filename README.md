@@ -101,7 +101,16 @@ Notes
 - Keys are stored in plaintext per hackathon requirements; do not commit real secrets.
 
 Environment
-- `CONFIG`: absolute or relative path to your YAML file (defaults to `./config.yaml`).
+- `CONFIG` (optional): absolute or relative path to your YAML file. If set, it will be used directly and the auto-fetch behavior is skipped.
+- `CONFIG_FILENAME`: the filename to look for at the project root (default `config.yaml`).
+- `VERSION`: version segment appended to the fetch URL.
+- `URL`: base URL to fetch the config from.
+- `API_KEY`: API key sent as `X-API-Key` header when fetching.
+
+Startup behavior
+- On server start, if `CONFIG` is not set, the server expects a file named `<CONFIG_FILENAME>` at the project root.
+- If that file does not exist, the server will fetch it from `${URL}/${VERSION}/${CONFIG_FILENAME}` with the header `X-API-Key: ${API_KEY}` and save it locally before continuing startup.
+- If any of `URL`, `VERSION`, or `API_KEY` are missing when a fetch is required, startup will fail with a helpful error message.
 
 ## Authentication & permissions
 
