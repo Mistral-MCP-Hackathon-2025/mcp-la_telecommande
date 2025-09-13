@@ -27,16 +27,20 @@ def _get_env_creds() -> tuple[str, str, int, str | None]:
     key_filename = os.getenv("KEY_FILENAME")
     port = int(os.getenv("PORT", "22"))
     if not host or not user:
-        raise ValueError("Missing HOST or USER environment variables for SSH connection")
+        raise ValueError(
+            "Missing HOST or USER environment variables for SSH connection"
+        )
     return host, user, port, key_filename
 
 
 @mcp.tool(
     name="ssh_create_file",
     description="Create an empty file on the remote host using 'touch'.",
-    tags={"ssh", "filesystem", "remote"},
+    # tags={"ssh", "filesystem", "remote"},
 )
-def create_file(filename: Annotated[str, "Remote filename to create"]) -> CreateFileResult:
+def create_file(
+    filename: Annotated[str, "Remote filename to create"],
+) -> CreateFileResult:
     host, user, port, key_filename = _get_env_creds()
     with RemoteExecutor(host, user, key_filename=key_filename, port=port) as rx:
         stdout, stderr, rc = rx.run(f"touch {filename}")
@@ -54,9 +58,11 @@ def create_file(filename: Annotated[str, "Remote filename to create"]) -> Create
 @mcp.tool(
     name="ssh_run_command",
     description="Run an arbitrary command on the remote host and return stdout/stderr/rc.",
-    tags={"ssh", "remote", "exec"},
+    # tags={"ssh", "remote", "exec"},
 )
-def run_command(command: Annotated[str, "Shell command to execute remotely"]) -> RunCommandResult:
+def run_command(
+    command: Annotated[str, "Shell command to execute remotely"],
+) -> RunCommandResult:
     host, user, port, key_filename = _get_env_creds()
     with RemoteExecutor(host, user, key_filename=key_filename, port=port) as rx:
         stdout, stderr, rc = rx.run(command)
