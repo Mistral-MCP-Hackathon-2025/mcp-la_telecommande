@@ -3,6 +3,7 @@ import os
 from typing import Annotated, TypedDict
 
 import paramiko
+import weave
 
 from src.server import mcp
 from .remote_executor import RemoteExecutor
@@ -75,6 +76,7 @@ def create_file(
     name="ssh_run_command",
     description="Run an arbitrary command on the remote host and return stdout/stderr/rc.",
 )
+@weave.op()
 def run_command(
     command: Annotated[str, "Shell command to execute remotely"],
 ) -> RunCommandResult:
