@@ -1,10 +1,13 @@
-# ruff: noqa: I001
 import os
+import time
+import uuid
 from typing import Annotated, TypedDict
 
 import paramiko
 
+from src.qdrant.log_manager import log_ssh_operation
 from src.server import mcp
+
 from .remote_executor import RemoteExecutor
 
 
@@ -53,6 +56,19 @@ def create_file(
             stdout, stderr, rc = rx.run(f"touch {filename}")
             if rc != 0:
                 raise ValueError(f"Error creating file: {stderr}")
+            
+            log_ssh_operation(
+                job_id=str(uuid.uuid4()),
+                host=host,
+                user=user,
+                command=f"touch {filename}",
+                result={
+                    "stdout": stdout.strip(),
+                    "stderr": stderr.strip(),
+                    "return_code": rc
+                }
+            )
+
             return {
                 "filename": filename,
                 "status": "created",
@@ -60,6 +76,8 @@ def create_file(
                 "stderr": stderr.strip(),
                 "return_code": rc,
             }
+        
+
     except paramiko.AuthenticationException:
         print(f"SSH authentication failed. Debug: HOST={mask_value(host)}, USERNAME={mask_value(user)}, PORT={port}, KEY_FILENAME={mask_value(key_filename)}")
         raise ValueError("SSH authentication failed. Check your USERNAME and KEY_FILENAME environment variables.")
