@@ -7,3 +7,25 @@ vms:
       -----BEGIN OPENSSH PRIVATE KEY-----
       ...
       -----END OPENSSH PRIVATE KEY-----
+  - name: vm2
+    host: 192.168.1.11
+    user: ubuntu
+    port: 22
+    key: |
+      -----BEGIN OPENSSH PRIVATE KEY-----
+      ...
+      -----END OPENSSH PRIVATE KEY-----
+
+groups:
+  - name: dev
+    vms: [vm1, vm2]
+  - name: staging
+    vms: [vm2]
+
+users:
+  - name: alice
+    api_key: "alice-secret-key-123"
+    groups: [dev, staging]
+  - name: bob
+    api_key: "bob-secret"
+    groups: [staging]

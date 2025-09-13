@@ -1,153 +1,188 @@
-## SSH MCP — Developer README
+<div align="center">
 
-This repository is a minimal example MCP (Model Context Protocol) application using the `fastmcp` stack. The instructions below show how to set up a local development environment (recommended: Python 3.13), install dependencies using `uv`, enable linting with `ruff`, and run the app in development / debug mode with `fastmcp`.
+# SSH MCP Server
 
-## Checklist (what this document covers)
-- Install and use `uv` (recommended package runner used in this repo)
-- Create and activate a virtual environment (venv)
-- Install project dependencies
-- Use `ruff` for linting (CLI + VS Code extension notes)
-- Run the app in development/debug mode with `fastmcp dev main.py` and how to switch transports
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![FastMCP](https://img.shields.io/badge/Framework-FastMCP-8A2BE2)](https://github.com/fastmcp/fastmcp)
+[![Paramiko](https://img.shields.io/badge/SSH-Paramiko-2E8B57)](https://www.paramiko.org/)
+[![Lint](https://img.shields.io/badge/Lint-Ruff-46A9E1)](https://github.com/astral-sh/ruff)
+[![Lockfile](https://img.shields.io/badge/Deps-uv.lock-000000)](uv.lock)
 
-## Requirements
-- Python >= 3.13 (project `pyproject.toml` targets py313)
-- A POSIX-compatible shell (examples use bash/zsh on macOS and Linux)
+<br/>
 
-## Quick start (recommended)
+🚀 Built during the Mistral AI MCP Server Hackathon (2025)
 
-1) Install uv
+<br/>
+
+## Authors
+
+Lucas Duport • Armand Blin • Arthur Courselle • Samy Yacef • Flavien [team contributors]
+
+</div>
+
+This project is an SSH-powered Model Context Protocol (MCP) server. It exposes safe, composable tools to list authorized VMs, probe reachability, inspect distro/platform details, and execute commands over SSH — all permissioned via simple API keys defined in YAML.
+
+The goal is to make remote ops dead-simple for MCP clients while keeping access control transparent and configuration-first.
+
+---
+
+## Highlights
+- SSH over Paramiko with typed results
+- YAML-first config: VMs, users, groups
+- Opt-in permission model (off by default if no users/groups)
+- Clean FastMCP bootstrap with HTTP and stdio transports
+- Strong, friendly error messages: “API key invalid or VM not permitted”
+
+## Quick start
+
+Prereqs
+- Python 3.13+
+- macOS/Linux with zsh/bash
+
+1) Create a virtual env and install deps (via uv)
+
 ```bash
 curl -sSL https://astral.sh/uv/install.sh | sh
-```
-
-After installing `uv` make sure it's available on your PATH (reopen the shell if needed).
-
-2) Install project dependencies (inside the venv)
-
-The project includes `pyproject.toml` and a `uv.lock` file. Using `uv` we can install the dependencies into the active environment. From the repo root (after activating `.venv`):
-
-```bash
-# upgrade pip/setuptools/wheel first
-uv pip install --upgrade pip setuptools wheel
-
-# then install the project dependencies listed in pyproject.toml
+uv venv
+source .venv/bin/activate
 uv pip install -r pyproject.toml
 ```
 
-Notes:
-- The Dockerfile in this repo installs dependencies with `uv pip install --system --upgrade pip setuptools wheel -r pyproject.toml`. In a local venv you should omit `--system`.
-- If you prefer not to use `uv`, installing directly with pip will also work after you export requirements or run `pip install .` if you make the project installable. The recommended approach here is to use `uv` so the `uv.lock` constraints are respected.
+2) Configure VMs
 
-## Run the app in development / debug mode
+- Copy `config_examples.yaml` to `config.yaml` and edit hosts/keys/users.
+- Set the `CONFIG` environment variable to point to your YAML file if not using the default path.
 
-This project uses `fastmcp` for the MCP runtime. The entry point is `main.py` at the repository root.
-
-- Start in the default (stdio) transport:
+3) Run
 
 ```bash
-# with the venv activated
+source .venv/bin/activate
 fastmcp dev main.py
 ```
 
-By default `main.py` reads `MCP_TRANSPORT` (defaults to `stdio`) and will run the MCP in stdio mode, which is useful for local tooling and embedding.
+By default `fastmcp dev` uses stdio transport. Running `python main.py` (or `fastmcp run`) will use the streamable HTTP transport configured in `main.py`.
 
-- Run the app as an HTTP server (useful for testing with curl or browser-based tooling):
+### Optional: HTTP transport
 
 ```bash
 MCP_TRANSPORT=http MCP_HOST=127.0.0.1 MCP_PORT=8000 fastmcp dev main.py
 ```
 
-When using `http` transport the app will bind to `MCP_HOST:MCP_PORT` (the defaults are `127.0.0.1:8000`), and you can interact with the service over HTTP. `main.py` contains this logic:
+Then hit the server with your client or with curl (path will depend on your MCP client).
 
-- If `MCP_TRANSPORT` == `http` -> `mcp.run(transport="http", host=host, port=port)`
-- If `MCP_TRANSPORT` == `stdio` -> `mcp.run(transport="stdio")`
+## Configuration
 
-Example: test HTTP endpoint with curl (replace path as appropriate for your MCP implementation):
+Put your config in YAML. Minimum: a list of VMs. Optionally add groups and users to enable permissions.
 
-```bash
-curl -v http://127.0.0.1:8000/
+Example (see `config_examples.yaml`):
+
+```yaml
+vms:
+  - name: vm1
+    host: 192.168.1.10
+    user: ubuntu
+    port: 22
+    key: |
+      -----BEGIN OPENSSH PRIVATE KEY-----
+      ...
+      -----END OPENSSH PRIVATE KEY-----
+
+groups:
+  - name: dev
+    vms: [vm1]
+
+users:
+  - name: alice
+    api_key: "alice-secret"
+    groups: [dev]
 ```
 
-If `fastmcp` is not on your PATH, make sure your venv is activated; the `fastmcp` CLI is provided by the `fastmcp` package installed in the environment.
+Notes
+- If `users` or `groups` are omitted entirely, permissions are disabled and all VMs are accessible.
+- Keys are stored in plaintext per hackathon requirements; do not commit real secrets.
 
-## SSH tools (remote exec) 🔐
+Environment
+- `CONFIG`: absolute or relative path to your YAML file (defaults to `./config.yaml`).
 
-This project includes optional SSH-based tools under `src/ssh/`:
-- `ssh_create_file` — create a file on a remote host using `touch`.
-- `ssh_run_command` — run an arbitrary shell command remotely and return stdout/stderr/rc.
-- `ssh_is_vm_up` — check if a configured VM is reachable on its SSH port with a quick TCP probe.
-- `ssh_vm_distro_info` — retrieve distro/kernel/pkg-manager and a few debugging signals from the VM to help troubleshooting.
+## Authentication & permissions
 
-Configure environment variables (create a `.env` from `.env.example` or set them in your shell):
+When permissions are enabled (presence of `users` list):
+- Clients must send an Authorization header. Supported formats:
+  - `Authorization: Bearer <API_KEY>`
+  - `Authorization: <API_KEY>` (raw value)
+- Authorization determines which VMs you see and can access.
+- Errors intentionally use a single message for clarity: `API key invalid or VM not permitted`.
 
-```
-HOST=<remote host>
-USER=<ssh username>
-KEY_FILENAME=<path to private key>  # optional if using agent/known keys
-PORT=22                             # optional (defaults to 22)
-```
+When permissions are disabled (no `users` key):
+- All VMs are visible and callable without any Authorization header.
 
-When the server starts, these tools are auto-registered via imports in `src/server.py`.
+## MCP tools
 
-### Examples
+All tools are defined in `src/SSH/tools.py` and registered by `src/server.py`.
 
-With the server running, call tools via your MCP client of choice. Example JSON-ish payloads shown for illustration:
+1) ssh_list_vms
+- Purpose: List VM names the caller can access.
+- Params: none
+- Returns: `{ vms: string[] }`
+- Errors: `ValueError` when permissions are enabled and the API key is missing/invalid.
 
-- Check reachability:
+2) ssh_is_vm_up
+- Purpose: Quick TCP probe to the VM’s SSH port with rough latency.
+- Params: `vm_name: string`
+- Returns: `{ vm, host, port, reachable, latency_ms, reason }`
+- Errors: `ValueError` on authorization failure when permissions are enabled.
 
+3) ssh_vm_distro_info
+- Purpose: Read-only diagnostics: distro, kernel, init, pkg manager, host/user basics.
+- Params: `vm_name: string`
+- Returns: `{ vm, host, port, status, distro, platform, network, user, notes[] }`
+- Errors: `ValueError` on authorization failure or SSH errors.
+
+4) ssh_run_command
+- Purpose: Execute a shell command on a permitted VM (bash -lc).
+- Params: `command: string`, `vm_name: string`
+- Returns: `{ command, status: 'executed', stdout, stderr, return_code }`
+- Errors: `ValueError` on authorization failure, SSH/auth issues, or non-zero exit (includes stderr).
+
+Usage flow (recommended)
+- Call `ssh_list_vms` first to discover allowed VMs.
+- Optionally call `ssh_is_vm_up` to preflight connectivity.
+- Use `ssh_vm_distro_info` for diagnostics.
+- Use `ssh_run_command` for actual remote execution.
+
+## Examples
+
+Reachability
 ```
 tool: ssh_is_vm_up
 args: { "vm_name": "vm1" }
-response: {
-  "vm": "vm1",
-  "host": "192.168.1.10",
-  "port": 22,
-  "reachable": true,
-  "latency_ms": 11.7,
-  "reason": null
-}
+→ { vm, host, port, reachable, latency_ms, reason }
 ```
 
-- Retrieve distro+debug info:
-
+Distro & platform info
 ```
 tool: ssh_vm_distro_info
 args: { "vm_name": "vm1" }
-response: {
-  "vm": "vm1",
-  "host": "192.168.1.10",
-  "port": 22,
-  "status": "ok",
-  "distro": { "id": "ubuntu", "version_id": "22.04", "name": "Ubuntu", "pretty_name": "Ubuntu 22.04.4 LTS" },
-  "platform": { "kernel_release": "6.5.0-44-generic", "machine": "x86_64", "init": "systemd", "pkg_manager": "apt" },
-  "network": { "hostname": "vm1", "fqdn": "vm1.local", "addresses": ["eth0:10.0.0.10/24"] },
-  "user": { "username": "ubuntu", "shell": "/bin/bash" },
-  "notes": []
-}
+→ { vm, host, port, status, distro, platform, network, user, notes }
 ```
 
-## Debugging notes
-- Use `fastmcp dev` for local development — it enables the developer-friendly runtime and reload behaviour provided by `fastmcp`.
-- Switch transports with the `MCP_TRANSPORT` env var. `stdio` is often used by editor integrations and local harnesses; `http` exposes a network endpoint.
-- Common env vars used by `main.py`:
-  - `MCP_TRANSPORT` (stdio | http) — default: `stdio`
-  - `MCP_HOST` — default: `127.0.0.1` (only used by `http` transport)
-  - `MCP_PORT` — default: `8000` (only used by `http` transport)
+Run a command
+```
+tool: ssh_run_command
+args: { "vm_name": "vm1", "command": "uname -a" }
+→ { command, status: 'executed', stdout, stderr, return_code }
+```
 
-## Docker
-
-This repository includes a `Dockerfile` which installs `uv` and uses it to install pinned dependencies from `pyproject.toml` / `uv.lock`. The Dockerfile installs with `uv pip install --system --upgrade pip setuptools wheel -r pyproject.toml` inside the image to produce a small, reproducible container.
+## Development
+- Lint/format: Ruff (configured in `pyproject.toml`).
+- Tracing: Weave initialized as `mcp-ssh`.
+- Entry points: `main.py` (HTTP by default), `src/server.py` (FastMCP instance, tool registration).
 
 ## Troubleshooting
-- If `fastmcp` or `uv` commands are not found, ensure your venv is activated and that the tools are installed into the active environment.
-- If you see Python version errors, confirm you are running Python 3.13 as required by `pyproject.toml`.
-- If `ruff` reports many issues, run `ruff check src/ --fix` and commit the changes.
+- fastmcp not found: activate your venv; ensure FastMCP installed.
+- Python version errors: this repo targets Python 3.13.
+- Permission errors: ensure you send the right Authorization header and that your API key belongs to a user with groups that include the VM.
+- SSH errors: verify host, user, port, and key material for the VM in your YAML.
 
-## Where to look in this repo
-- Entry point: `main.py` — shows how the MCP server is started and how `MCP_TRANSPORT`, `MCP_HOST`, and `MCP_PORT` are used.
-- Dependencies and linting config: `pyproject.toml` and `uv.lock`.
-
-## Quick summary
-- Create a venv, activate it, install `uv`, then run `uv pip install -r pyproject.toml` to install deps. Use `fastmcp dev main.py` to run locally. Use `ruff check` (or the VS Code Ruff extension) for linting and auto-fixing.
-
-Thanks for checking out this sample MCP project.
+## Acknowledgements
+Created during the Mistral AI MCP Server Hackathon 2025. Thanks to the organizers, mentors, and the open-source community around FastMCP, Paramiko, and Weave.
