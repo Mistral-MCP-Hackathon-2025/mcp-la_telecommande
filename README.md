@@ -1,0 +1,1 @@
+# MCP-Mistral-Hackathon-2025
