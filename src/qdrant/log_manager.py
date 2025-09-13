@@ -35,8 +35,8 @@ def embed_text(text: str) -> list[float]:
 
 def ensure_collections_exist():
     collections_config = {
-        "ssh_logs": {
-            "description": "SSH stdout/stderr logs with semantic search",
+        "ssh_stdout": {
+            "description": "SSH stdout logs with semantic search",
             "indexes": {
                 "host": PayloadSchemaType.KEYWORD,
                 "user": PayloadSchemaType.KEYWORD,
@@ -57,8 +57,8 @@ def ensure_collections_exist():
                 "return_code": PayloadSchemaType.INTEGER,
             },
         },
-        "ssh_errors": {
-            "description": "SSH errors and stderr outputs",
+        "ssh_stderr": {
+            "description": "SSH stderr outputs",
             "indexes": {
                 "host": PayloadSchemaType.KEYWORD,
                 "user": PayloadSchemaType.KEYWORD,
@@ -131,7 +131,7 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
     if stdout:
         stdout_embedding = embed_text(f"STDOUT: {stdout}")
         qdrant_client.upsert(
-            collection_name="ssh_logs",
+            collection_name="ssh_stdout",
             points=[
                 PointStruct(
                     id=str(uuid.uuid4()),
@@ -157,7 +157,7 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
     if error:
         stderr_embedding = embed_text(f"ERROR: {error} ")
         qdrant_client.upsert(
-            collection_name="ssh_errors",
+            collection_name="ssh_stderr",
             points=[
                 PointStruct(
                     id=str(uuid.uuid4()),

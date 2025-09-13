@@ -24,26 +24,26 @@ class SearchResult(TypedDict):
 
 @mcp.tool(
     name="ssh_search_logs",
-    description="Search through SSH command history and outputs using semantic search. Available filters: host, user, time period, type of log (stdout, stderr, command), limit.",
+    description="Search through SSH command history and outputs using semantic search. Search 'commands' for executed commands, 'stdout' for command outputs, or 'stderr' for error messages. Supports filtering by collection (stdout, commands, stderr), host, user, and time period.",
 )
 def search_ssh_logs(
     query: Annotated[
         str, "Search query (e.g. 'database errors', 'memory usage', 'failed commands')"
     ],
     collection: Annotated[
-        str, "Collection to search: 'logs', 'commands', or 'errors'"
-    ] = "logs",
+        str, "Collection to search: 'stdout', 'commands', or 'stderr'"
+    ] = "commands",
     host_filter: Annotated[str | None, "Filter by specific host"] = None,
     user_filter: Annotated[str | None, "Filter by specific user"] = None,
     time_hours: Annotated[int | None, "Filter by last N hours"] = None,
     limit: Annotated[int, "Number of results to return"] = 10,
 ) -> SearchResult:
-    """Search through logged SSH operations using semantic similarity"""
+
     ensure_collections_exist()
 
     collection_name = f"ssh_{collection}"
-    if collection_name not in ["ssh_logs", "ssh_commands", "ssh_errors"]:
-        raise ValueError("Invalid collection. Use 'logs', 'commands', or 'errors'")
+    if collection_name not in ["ssh_stdout", "ssh_commands", "ssh_stderr"]:
+        raise ValueError("Invalid collection. Use 'stdout', 'commands', or 'stderr'")
 
     filters = []
     if host_filter:
@@ -98,14 +98,14 @@ def search_ssh_logs(
 
 @mcp.tool(
     name="ssh_get_statistics",
-    description="Get statistics and insights from SSH operations logs. Available filters: time period, user, host.",
+    description="Get comprehensive usage statistics and insights from SSH command history including success rates, most used hosts/commands, and recent errors. Available filters: time period, user, host.",
 )
 def get_ssh_statistics(
     time_hours: Annotated[int, "Statistics for last N hours"] = 24,
     user_filter: Annotated[str | None, "Filter statistics by specific user"] = None,
     host_filter: Annotated[str | None, "Filter statistics by specific host"] = None,
 ) -> dict:
-    """Get usage statistics from logged SSH operations"""
+    
     ensure_collections_exist()
 
     filters = []
@@ -162,7 +162,7 @@ def get_ssh_statistics(
 
     # Get recent errors
     error_results = qdrant_client.scroll(
-        collection_name="ssh_errors",
+        collection_name="ssh_stderr",
         scroll_filter=Filter(must=filters) if filters else None,
         limit=10,
         with_payload=True,
@@ -200,7 +200,7 @@ def get_ssh_statistics(
 
 @mcp.tool(
     name="ssh_suggest_commands",
-    description="Get command suggestions based on current context and historical usage.",
+    description="Get command suggestions based on context using semantic search of successful command history. Finds similar commands that have been executed successfully in the past.",
 )
 def suggest_commands(
     context: Annotated[
@@ -209,7 +209,7 @@ def suggest_commands(
     host: Annotated[str | None, "Target host for context-specific suggestions"] = None,
     limit: Annotated[int, "Number of suggestions to return"] = 5,
 ) -> dict:
-    """Suggest commands based on context and historical successful usage"""
+
     ensure_collections_exist()
 
     search_query = context
