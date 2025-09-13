@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import os
 import shlex
-from typing import Optional, Tuple, Dict
+from typing import Dict, Optional, Tuple
 
 import paramiko
-
-from dotenv import load_dotenv
 
 
 class RemoteExecutor:
@@ -48,14 +46,12 @@ class RemoteExecutor:
         self._client.set_missing_host_key_policy(known_hosts_policy)
         self._connected = False
 
-
     def __enter__(self) -> "RemoteExecutor":
         self.connect()
         return self
 
     def __exit__(self, exc_type, exc, tb):
         self.close()
-
 
     def connect(self) -> None:
         if self._connected:
@@ -76,7 +72,6 @@ class RemoteExecutor:
         if self._connected:
             self._client.close()
             self._connected = False
-
 
     def run(
         self,
@@ -168,19 +163,3 @@ class RemoteExecutor:
 
         # Execute under bash -lc so we get a login-like shell and proper expansions
         return f"/bin/bash -lc {shlex.quote(env_prefix + command)}"
-
-
-
-# Local Test 
-if __name__ == "__main__":
-    load_dotenv()
-    host = os.getenv("HOST")
-    user = os.getenv("USER")
-    key_filename = os.getenv("KEY_FILENAME")
-    port = int(os.getenv("PORT", 22))
-
-    with RemoteExecutor(host, user, port=port, key_filename=key_filename) as rx:
-        stdout, stderr, rc = rx.run("touch toto", env={"FOO": "bar"})
-        print("RC:", rc)
-        print("STDOUT:\n", stdout)
-        print("STDERR:\n", stderr)
