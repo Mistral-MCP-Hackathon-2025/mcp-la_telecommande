@@ -23,7 +23,6 @@ class BaseResult(TypedDict):
     stderr: str
     return_code: int
 
-
 class CreateFileResult(BaseResult):
     filename: str
 

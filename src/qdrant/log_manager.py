@@ -1,7 +1,6 @@
 import os
 import time
 import uuid
-from typing import Annotated
 
 from mistralai import Mistral
 
@@ -12,7 +11,11 @@ mistral_model = "mistral-embed"
 client = Mistral(api_key=mistral_api_key)
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, PointStruct, FieldCondition, Range, Filter
+from qdrant_client.models import (
+    Distance,
+    PointStruct,
+    VectorParams,
+)
 
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
 
@@ -115,61 +118,3 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
                         )
                     ]
                 )
-
-def search_ssh_logs(
-    query: Annotated[str, "Search query (e.g. 'database errors', 'memory usage', 'failed commands')"],
-    collection: Annotated[str, "Collection to search: 'logs', 'commands', or 'errors'"] = "logs",
-    host_filter: Annotated[str | None, "Filter by specific host"] = None,
-    time_hours: Annotated[int | None, "Filter by last N hours"] = None,
-    limit: Annotated[int, "Number of results to return"] = 10,
-):
-    """Search through logged SSH operations using semantic similarity"""
-    ensure_collections_exist()
-    
-    collection_name = f"ssh_{collection}"
-    if collection_name not in ["ssh_logs", "ssh_commands", "ssh_errors"]:
-        raise ValueError("Invalid collection. Use 'logs', 'commands', or 'errors'")
-    
-    # Build filters
-    filters = []
-    if host_filter:
-        filters.append(FieldCondition(key="host", match={"value": host_filter}))
-    
-    if time_hours:
-        since_timestamp = time.time() - (time_hours * 3600)
-        filters.append(FieldCondition(key="timestamp", range=Range(gte=since_timestamp)))
-    
-    # Create embedding for search query
-    embedding = embed_text(query)
-    
-    # Search in Qdrant
-    results = qdrant_client.query_points(
-        collection_name=collection_name,
-        query=embedding,
-        query_filter=Filter(must=filters) if filters else None,
-        with_payload=True,
-        limit=limit
-    )
-    
-    # Format results
-    formatted_results = []
-    for point in results.points:
-        payload = point.payload 
-        formatted_results.append({
-            "relevance_score": point.score,
-            "log_line": payload.get("log_line", payload.get("command", "")),
-            "host": payload.get("host", ""),
-            "command": payload.get("command", ""),
-            "timestamp": payload.get("timestamp", 0),
-            "job_id": payload.get("job_id", ""),
-            "type": payload.get("type", ""),
-            "return_code": payload.get("return_code"),
-            "formatted_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(payload.get("timestamp", 0)))
-        })
-    
-    return {
-        "query": query,
-        "results": formatted_results,
-        "total_found": len(formatted_results)
-    }
-
