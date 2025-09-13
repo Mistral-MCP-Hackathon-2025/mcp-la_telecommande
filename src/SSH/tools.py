@@ -32,7 +32,7 @@ class RunCommandResult(BaseResult):
     description="Give a list of available virtual machines.",
 )
 @weave.op()
-def list_vms() -> list[dict]:
+def list_vms() -> dict[str, list[str]]:
     return {"vms": config_manager.list_vms()}
 
 

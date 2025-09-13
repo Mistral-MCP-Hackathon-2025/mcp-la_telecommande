@@ -1,13 +1,13 @@
 from pathlib import Path
-
+from typing import Union
 import yaml
 
 from .credentials import VMCredentials
 
 
 class ConfigManager:
-    def __init__(self, config_path: Path):
-        self.config_path = config_path
+    def __init__(self, config_path: Union[str, Path]):
+        self.config_path = Path(config_path)
         self._vms = self._load_vms_config()
 
     def _load_vms_config(self) -> dict:

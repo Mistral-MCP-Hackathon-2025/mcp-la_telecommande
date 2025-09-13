@@ -50,8 +50,6 @@ class RemoteExecutor:
         self.allow_agent = allow_agent
 
         # Validate that only one key method is provided
-        # if not :
-        #     raise ValueError("Cannot specify both key_filename and key_content")
 
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(known_hosts_policy)
@@ -83,7 +81,6 @@ class RemoteExecutor:
                 port=self.port,
                 username=self.username,
                 password=self.password,
-                # key_filename=self.key_filename,
                 pkey=pkey,
                 timeout=self.timeout,
                 look_for_keys=self.look_for_keys,
