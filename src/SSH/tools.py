@@ -1,12 +1,15 @@
 """MCP tools that expose SSH actions.
 
-This module registers MCP tools for listing VMs and running commands remotely
-via the `RemoteExecutor`. Return types are typed dicts for predictability.
+This module registers MCP tools for listing accessible VMs and running commands
+remotely via the `RemoteExecutor`. Return values are strongly typed for
+predictability. All tools document authorization expectations and error modes
+to avoid misuse by MCP clients.
 
-New tools added:
-- `ssh_is_vm_up(vm_name)`: Quick reachability check (TCP connect to SSH port).
-- `ssh_vm_distro_info(vm_name)`: Gather distro/kernel/package manager details
-    and a few debugging signals via SSH.
+Tools provided:
+- `ssh_list_vms()`: Return only the VM names the caller may access.
+- `ssh_run_command(command, vm_name)`: Run a command on a permitted VM.
+- `ssh_is_vm_up(vm_name)`: Quick reachability check (TCP connect to SSH).
+- `ssh_vm_distro_info(vm_name)`: Collect distro/platform debug info.
 """
 
 # ruff: noqa: I001
@@ -20,7 +23,9 @@ import weave
 
 from src.server import mcp, config_manager
 from src.config import VMCredentials
+from src.config.permissions import permissions_enabled
 from .remote_executor import RemoteExecutor
+from mcp.server.fastmcp import Context
 
 
 def mask_value(value: str | None) -> str:
@@ -37,6 +42,39 @@ def mask_value(value: str | None) -> str:
     return "".join("*" if i % 2 else c for i, c in enumerate(value))
 
 
+def _extract_api_key_from_headers(ctx: Context) -> str | None:
+    """Retrieve API key from the Authorization header in request context.
+
+    Accepts either `Authorization: Bearer <API_KEY>` or a raw value.
+    Returns the extracted API key string or None if not found.
+    """
+    # Best-effort: headers may be on request_context.request.headers in HTTP mode
+    hdrs = None
+    try:
+        req = getattr(ctx.request_context, "request", None)
+        if req is not None:
+            hdrs = getattr(req, "headers", None)
+        if hdrs is None:
+            hdrs = getattr(ctx.request_context, "headers", None)
+        if hdrs is None:
+            meta = getattr(ctx.request_context, "meta", None)
+            if isinstance(meta, dict):
+                hdrs = meta.get("headers")
+    except Exception:
+        hdrs = None
+
+    auth = None
+    if hdrs:
+        # support dict-like headers
+        auth = hdrs.get("Authorization") or hdrs.get("authorization")
+    if not auth:
+        return None
+    auth = str(auth).strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return auth or None
+
+
 class BaseResult(TypedDict):
     """Base shape for SSH tool results."""
     status: str
@@ -48,6 +86,15 @@ class BaseResult(TypedDict):
 class RunCommandResult(BaseResult):
     """Result shape for the `run_command` tool."""
     command: str
+
+
+class ListVMsResult(TypedDict):
+    """Shape for VM listing results.
+
+    Attributes:
+        vms: The list of VM names the caller can access.
+    """
+    vms: list[str]
 
 
 # -----------------------
@@ -104,23 +151,51 @@ def _detect_pkg_manager(out_which: str) -> str | None:
 
 
 @mcp.tool(
-    name="list_vms",
-    description="Give a list of available virtual machines.",
+    name="ssh_list_vms",
+    description=(
+        "List VM names the caller is allowed to access. Authorization is derived from the HTTP Authorization header "
+        "present in the MCP request context. Expected formats: 'Bearer <API_KEY>' or a raw API key string. "
+        "When permissions are disabled in the YAML (no users/groups), this tool returns all configured VMs.\n\n"
+        "Returns: { vms: string[] } — list of VM names that are accessible for the provided API key.\n\n"
+        "Errors: Raises ValueError if permissions are enabled and the Authorization header is missing/invalid.\n\n"
+        "Important: Clients MUST call this first to discover allowed VMs, and MUST NOT attempt to run commands on VMs "
+        "not present in the returned list."
+    ),
 )
 @weave.op()
-def list_vms() -> dict[str, list[str]]:
-    """Return a mapping containing the list of available VM names."""
+def ssh_list_vms(ctx: Context) -> ListVMsResult:
+    """Return only the VM names accessible to the caller.
+
+    Authorization:
+        - If permissions are enabled in the YAML, an API key MUST be provided via the Authorization header.
+        - If disabled (no users/groups defined), all VMs are returned.
+    """
+    if permissions_enabled(config_manager.raw):
+        api_key = _extract_api_key_from_headers(ctx)
+        if not api_key:
+            raise ValueError("API key invalid or VM not permitted")
+        return {"vms": config_manager.authorized_vms_for_key(api_key)}
     return {"vms": config_manager.list_vms()}
 
 
 @mcp.tool(
     name="ssh_run_command",
-    description="Run an arbitrary command on the given remote Virtual Machine and return stdout/stderr/rc.",
+    description=(
+        "Execute a shell command on a permitted VM over SSH and return results. Authorization is derived from the HTTP "
+        "Authorization header in the MCP request context.\n\n"
+        "Parameters:\n"
+        "- command (string): Shell command to execute remotely. The command runs under '/bin/bash -lc' with a login-like shell.\n"
+        "- vm_name (string): Name of the target VM as defined in the YAML configuration.\n"
+        "Returns: { command: string, status: 'executed', stdout: string, stderr: string, return_code: number }.\n\n"
+        "Errors: Raises ValueError on authorization failure, SSH connection/authentication failures, or non-zero return codes.\n\n"
+        "Important: Clients MUST ensure vm_name is present in the list returned by 'ssh_list_vms' before invoking this tool."
+    ),
 )
 @weave.op()
 def run_command(
-    command: Annotated[str, "Shell command to execute remotely"],
-    vm_name: str,
+    command: Annotated[str, "Shell command to execute remotely (bash -lc)."],
+    vm_name: Annotated[str, "Name of a permitted VM from ssh_list_vms"],
+    ctx: Context,
 ) -> RunCommandResult:
     """Execute a shell command on the specified VM via SSH.
 
@@ -135,6 +210,13 @@ def run_command(
         ValueError: When authentication fails, the connection fails, or the
             remote command exits non-zero.
     """
+    # Enforce authorization if permissions are enabled
+    if permissions_enabled(config_manager.raw):
+        api_key = _extract_api_key_from_headers(ctx)
+        if not api_key:
+            raise ValueError("API key invalid or VM not permitted")
+        config_manager.ensure_can_access(api_key, vm_name)
+
     creds: VMCredentials = config_manager.get_vm_creds(vm_name=vm_name)
     try:
         with RemoteExecutor(
@@ -185,13 +267,22 @@ class VMUpResult(TypedDict):
 @mcp.tool(
     name="ssh_is_vm_up",
     description=(
-        "Check if the target VM is reachable on its SSH port (TCP connect). "
-        "Only requires the VM name present in the YAML config."
+        "Check if the VM's SSH port is reachable (simple TCP connect) and measure approximate latency.\n\n"
+        "Parameters:\n"
+        "- vm_name (string): Name of the target VM as defined in the YAML configuration.\n"
+        "Returns: { vm, host, port, reachable, latency_ms, reason }. 'latency_ms' is a rough client-side measurement.\n\n"
+        "Errors: Raises ValueError if authorization fails when permissions are enabled.\n\n"
+        "Important: Use this as a lightweight pre-check before attempting SSH commands."
     ),
 )
 @weave.op()
-def ssh_is_vm_up(vm_name: str) -> VMUpResult:
+def ssh_is_vm_up(vm_name: str, ctx: Context) -> VMUpResult:
     """Return whether the VM's SSH port is reachable along with latency."""
+    if permissions_enabled(config_manager.raw):
+        api_key = _extract_api_key_from_headers(ctx)
+        if not api_key:
+            raise ValueError("API key invalid or VM not permitted")
+        config_manager.ensure_can_access(api_key, vm_name)
     creds: VMCredentials = config_manager.get_vm_creds(vm_name=vm_name)
     reachable, latency_ms, reason = _tcp_reachable(creds.host, creds.port)
     return {
@@ -243,12 +334,21 @@ class VMInfoResult(TypedDict, total=False):
 @mcp.tool(
     name="ssh_vm_distro_info",
     description=(
-        "Retrieve Linux distribution and relevant debugging info from the VM via SSH. "
-        "Includes os-release fields, kernel+arch, init process, and package manager."
+        "Retrieve Linux distro and platform debugging info by running safe discovery commands over SSH.\n\n"
+        "Parameters:\n"
+        "- vm_name (string): Name of the target VM as defined in the YAML configuration.\n"
+        "Returns: { vm, host, port, status: 'ok'|'unknown', distro, platform, network, user, notes[] }.\n\n"
+        "Errors: Raises ValueError on authorization failure or SSH errors.\n\n"
+        "Important: This tool is read-only and intended for diagnostics (no configuration changes)."
     ),
 )
 @weave.op()
-def ssh_vm_distro_info(vm_name: str) -> VMInfoResult:
+def ssh_vm_distro_info(vm_name: str, ctx: Context) -> VMInfoResult:
+    if permissions_enabled(config_manager.raw):
+        api_key = _extract_api_key_from_headers(ctx)
+        if not api_key:
+            raise ValueError("API key invalid or VM not permitted")
+        config_manager.ensure_can_access(api_key, vm_name)
     creds: VMCredentials = config_manager.get_vm_creds(vm_name=vm_name)
     result: VMInfoResult = {
         "vm": vm_name,
