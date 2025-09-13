@@ -2,8 +2,8 @@ from fastmcp import FastMCP
 
 # Create the MCP server
 mcp = FastMCP(
-    name="SampleProject",
-    instructions="A playground MCP server showcasing all advanced features.",
+    name="MCP SSH",
+    instructions="This MCP allows managing remote servers via SSH. Use the provided tools to execute commands and manage files on the remote host.",
     version="1.0.0"
 )
 
