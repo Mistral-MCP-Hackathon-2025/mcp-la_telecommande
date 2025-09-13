@@ -70,16 +70,16 @@ def search_ssh_logs(
         payload = point.payload
         formatted_results.append({
             "relevance_score": point.score,
-            "log_line": payload.get("log_line", payload.get("command", "")),
             "host": payload.get("host", ""),
             "command": payload.get("command", ""),
             "timestamp": payload.get("timestamp", 0),
             "job_id": payload.get("job_id", ""),
-            "type": payload.get("type", ""),
+            "stdout": payload.get("stdout", ""),
+            "stderr": payload.get("stderr", ""),
             "return_code": payload.get("return_code"),
             "formatted_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(payload.get("timestamp", 0)))
         })
-    
+
     return {
         "query": query,
         "results": formatted_results,

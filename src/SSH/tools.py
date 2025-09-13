@@ -17,6 +17,7 @@ import re
 
 import paramiko
 import weave
+import uuid
 
 from src.qdrant.log_manager import log_ssh_operation
 from src.server import mcp, config_manager
@@ -138,24 +139,39 @@ def run_command(
             remote command exits non-zero.
     """
     creds: VMCredentials = config_manager.get_vm_creds(vm_name=vm_name)
+    job_id = str(uuid.uuid4())
     try:
         with RemoteExecutor(
             creds.host, creds.user, port=creds.port, key=creds.key
         ) as rx:
             stdout, stderr, rc = rx.run(command)
+
+            
             if rc != 0:
                 raise ValueError(f"Error running command: {stderr}")
+
+            log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
+                "stdout": stdout,
+                "stderr": stderr,
+                "return_code": rc
+            })
+
             return {
-                "command": command,
                 "status": "executed",
                 "stdout": stdout.strip(),
                 "stderr": stderr.strip(),
                 "return_code": rc,
+                "command": command
             }
     except paramiko.AuthenticationException:
         print(
             f"SSH authentication failed. Debug: HOST={mask_value(creds.host)}, USERNAME={mask_value(creds.user)}, PORT={creds.port}, KEY_FILENAME={mask_value(creds.key)}"
         )
+        log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
+            "stdout": stdout,
+            "stderr": f"Authentication failed: {stderr}",
+            "return_code": rc
+        })
         raise ValueError(
             "SSH authentication failed. Check your USERNAME and KEY_FILENAME environment variables."
         )
@@ -163,11 +179,21 @@ def run_command(
         print(
             f"SSH connection failed: {e}. Debug: HOST={mask_value(creds.host)}, USERNAME={mask_value(creds.user)}, PORT={creds.port}, KEY_FILENAME={mask_value(creds.key)}"
         )
+        log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
+            "stdout": "",
+            "stderr": f"SSH connection failed: {e}",
+            "return_code": rc
+        })
         raise ValueError(f"SSH connection failed: {e}")
     except Exception as e:
         print(
             f"Unexpected error during SSH operation: {e}. Debug: HOST={mask_value(creds.host)}, USERNAME={mask_value(creds.user)}, PORT={creds.port}, KEY_FILENAME={mask_value(creds.key)}"
         )
+        log_ssh_operation(job_id=job_id, host=creds.host, user=creds.user, command=command, result={
+            "stdout": "",
+            "stderr": str(e),
+            "return_code": rc
+        })
         raise ValueError(f"Unexpected error during SSH operation: {e}")
 
 
@@ -328,6 +354,7 @@ def ssh_vm_distro_info(vm_name: str) -> VMInfoResult:
             result["network"]["addresses"] = addrs
 
             result["status"] = "ok"
+
             return result
     except paramiko.AuthenticationException:
         print(
