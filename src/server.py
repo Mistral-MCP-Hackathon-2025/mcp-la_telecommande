@@ -1,11 +1,7 @@
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
 
 # Create the MCP server
-mcp = FastMCP(
-    name="MCP SSH",
-    instructions="This MCP allows managing remote servers via SSH. Use the provided tools to execute commands and manage files on the remote host.",
-    version="1.0.0"
-)
+mcp = FastMCP("SSH_MCP", port=3000, stateless_http=True, debug=True)
 
 # ruff: noqa: F401, E402
 import src.SSH
