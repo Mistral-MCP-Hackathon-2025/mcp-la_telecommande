@@ -38,7 +38,6 @@ def search_ssh_logs(
     time_hours: Annotated[int | None, "Filter by last N hours"] = None,
     limit: Annotated[int, "Number of results to return"] = 10,
 ) -> SearchResult:
-
     ensure_collections_exist()
 
     collection_name = f"ssh_{collection}"
@@ -105,7 +104,6 @@ def get_ssh_statistics(
     user_filter: Annotated[str | None, "Filter statistics by specific user"] = None,
     host_filter: Annotated[str | None, "Filter statistics by specific host"] = None,
 ) -> dict:
-    
     ensure_collections_exist()
 
     filters = []
@@ -209,7 +207,6 @@ def suggest_commands(
     host: Annotated[str | None, "Target host for context-specific suggestions"] = None,
     limit: Annotated[int, "Number of suggestions to return"] = 5,
 ) -> dict:
-
     ensure_collections_exist()
 
     search_query = context
