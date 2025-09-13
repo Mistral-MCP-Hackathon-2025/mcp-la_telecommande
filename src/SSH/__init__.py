@@ -7,3 +7,5 @@ to run remote commands and create files over SSH.
 
 # ruff: noqa: F401, E402
 import src.SSH.tools
+
+__all__ = ["tools"]

@@ -75,6 +75,8 @@ If `fastmcp` is not on your PATH, make sure your venv is activated; the `fastmcp
 This project includes optional SSH-based tools under `src/ssh/`:
 - `ssh_create_file` — create a file on a remote host using `touch`.
 - `ssh_run_command` — run an arbitrary shell command remotely and return stdout/stderr/rc.
+- `ssh_is_vm_up` — check if a configured VM is reachable on its SSH port with a quick TCP probe.
+- `ssh_vm_distro_info` — retrieve distro/kernel/pkg-manager and a few debugging signals from the VM to help troubleshooting.
 
 Configure environment variables (create a `.env` from `.env.example` or set them in your shell):
 
@@ -85,7 +87,44 @@ KEY_FILENAME=<path to private key>  # optional if using agent/known keys
 PORT=22                             # optional (defaults to 22)
 ```
 
-When the server starts, these tools are auto-registered via imports in `src/sample/server.py`.
+When the server starts, these tools are auto-registered via imports in `src/server.py`.
+
+### Examples
+
+With the server running, call tools via your MCP client of choice. Example JSON-ish payloads shown for illustration:
+
+- Check reachability:
+
+```
+tool: ssh_is_vm_up
+args: { "vm_name": "vm1" }
+response: {
+  "vm": "vm1",
+  "host": "192.168.1.10",
+  "port": 22,
+  "reachable": true,
+  "latency_ms": 11.7,
+  "reason": null
+}
+```
+
+- Retrieve distro+debug info:
+
+```
+tool: ssh_vm_distro_info
+args: { "vm_name": "vm1" }
+response: {
+  "vm": "vm1",
+  "host": "192.168.1.10",
+  "port": 22,
+  "status": "ok",
+  "distro": { "id": "ubuntu", "version_id": "22.04", "name": "Ubuntu", "pretty_name": "Ubuntu 22.04.4 LTS" },
+  "platform": { "kernel_release": "6.5.0-44-generic", "machine": "x86_64", "init": "systemd", "pkg_manager": "apt" },
+  "network": { "hostname": "vm1", "fqdn": "vm1.local", "addresses": ["eth0:10.0.0.10/24"] },
+  "user": { "username": "ubuntu", "shell": "/bin/bash" },
+  "notes": []
+}
+```
 
 ## Debugging notes
 - Use `fastmcp dev` for local development — it enables the developer-friendly runtime and reload behaviour provided by `fastmcp`.

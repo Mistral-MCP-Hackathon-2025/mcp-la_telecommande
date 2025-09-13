@@ -10,7 +10,9 @@ dependencies = [
     "mcp[cli]>=1.13.1",
     "paramiko>=3.5.0",
     "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.2",
     "ruff>=0.12.12",
+    "weave>=0.52.7",
 ]
 
 [tool.ruff]
