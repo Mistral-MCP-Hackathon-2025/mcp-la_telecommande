@@ -10,13 +10,12 @@
 
 <br/>
 
-🚀 Built during the Mistral AI MCP Server Hackathon (2025)
+🚀 Built during the Mistral AI MCP Server Hackathon
 
 <br/>
 
 ## Authors
-
-Lucas Duport • Armand Blin • Arthur Courselle • Samy Yacef • Flavien [team contributors]
+[Lucas Duport](https://www.linkedin.com/in/lucas-duport/) • [Armand Blin](https://www.linkedin.com/in/armandblin/) • [Arthur Courselle](https://www.linkedin.com/in/arthur-courselle/) • [Samy Yacef](https://www.linkedin.com/in/samy-yacef-b88543146/) • [Flavien Goeffray](https://www.linkedin.com/in/flavien-geoffray/)
 
 </div>
 
@@ -185,4 +184,4 @@ args: { "vm_name": "vm1", "command": "uname -a" }
 - SSH errors: verify host, user, port, and key material for the VM in your YAML.
 
 ## Acknowledgements
-Created during the Mistral AI MCP Server Hackathon 2025. Thanks to the organizers, mentors, and the open-source community around FastMCP, Paramiko, and Weave.
+Created during the Mistral AI MCP Server Hackathon 2025. Thanks to the organizers, mentors, partners, and the open-source community around FastMCP, Paramiko, and Weave.
