@@ -56,18 +56,6 @@ def create_file(
             stdout, stderr, rc = rx.run(f"touch {filename}")
             if rc != 0:
                 raise ValueError(f"Error creating file: {stderr}")
-            
-            log_ssh_operation(
-                job_id=str(uuid.uuid4()),
-                host=host,
-                user=user,
-                command=f"touch {filename}",
-                result={
-                    "stdout": stdout.strip(),
-                    "stderr": stderr.strip(),
-                    "return_code": rc
-                }
-            )
 
             return {
                 "filename": filename,
