@@ -29,7 +29,7 @@ class RunCommandResult(BaseResult):
     command: str
 
 
-def _get_env_creds() -> tuple[str, str, int, str | None, str | None]:
+def _get_env_creds() -> tuple[str, str, int, str, str]:
     host = os.getenv("VM_HOST")
     user = os.getenv("VM_USERNAME")  # Changed to VM_USERNAME to avoid conflicts
     key_filename = os.getenv("KEY_FILENAME")
@@ -78,9 +78,9 @@ def create_file(
 def run_command(
     command: Annotated[str, "Shell command to execute remotely"],
 ) -> RunCommandResult:
-    host, user, port, key_filename = _get_env_creds()
+    host, user, port, key_filename, key_content = _get_env_creds()
     try:
-        with RemoteExecutor(host, user, key_filename=key_filename, port=port) as rx:
+        with RemoteExecutor(host, user, key_filename=key_filename, port=port, key_content=key_content) as rx:
             stdout, stderr, rc = rx.run(command)
             if rc != 0:
                 raise ValueError(f"Error running command: {stderr}")
