@@ -61,6 +61,12 @@ This isn't just for hardcore DevOps professionals. Thanks to our natural languag
 
 La Télécommande makes remote operations dead-simple for MCP clients while keeping access control transparent and configuration-first, ensuring your infrastructure remains secure and manageable at scale.
 
+## See La Télécommande in Action
+
+<div align="center">
+<iframe width="560" height="315" src="https://www.youtube.com/embed/5K_iIvqFtFc?si=8iPHMvTY6g-PnBj6" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+</div>
+
 ---
 
 ## Highlights
