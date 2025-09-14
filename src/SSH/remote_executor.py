@@ -140,7 +140,6 @@ class RemoteExecutor:
         key_content = key_content.strip()
 
         if "BEGIN OPENSSH PRIVATE KEY" in key_content and "\n" not in key_content:
-
             begin_marker = "-----BEGIN OPENSSH PRIVATE KEY-----"
             end_marker = "-----END OPENSSH PRIVATE KEY-----"
 
@@ -268,7 +267,7 @@ class RemoteExecutor:
         env_prefix = ""
         if env:
             exports = "; ".join(
-                f'export {k}={shlex.quote(v if v is not None else "")}'
+                f"export {k}={shlex.quote(v if v is not None else '')}"
                 for k, v in env.items()
             )
             env_prefix = exports + "; "

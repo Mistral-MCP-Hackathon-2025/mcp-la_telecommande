@@ -20,6 +20,7 @@ class VMCredentials:
         key: Private key material (OpenSSH or PEM) as a string, or None to rely
             on agent/known keys configuration.
     """
+
     host: str
     user: str
     port: int

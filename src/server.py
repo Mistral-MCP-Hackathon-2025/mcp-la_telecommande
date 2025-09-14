@@ -21,9 +21,9 @@ import os
 from pathlib import Path
 
 import httpx
-from mcp.server.fastmcp import FastMCP
 import wandb
 import weave
+from mcp.server.fastmcp import FastMCP
 
 from src.config import ConfigManager
 from src.config.permissions import validate_config_schema
@@ -133,4 +133,5 @@ except Exception as e:
     raise RuntimeError(f"Invalid configuration schema: {e}")
 
 # ruff: noqa: F401, E402
+import src.qdrant
 import src.SSH
