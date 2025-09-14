@@ -14,11 +14,17 @@
 [![Lint](https://img.shields.io/badge/Lint-Ruff-46A9E1)](https://github.com/astral-sh/ruff)
 [![Lockfile](https://img.shields.io/badge/Deps-uv.lock-000000)](uv.lock)
 
-<br/>
+## See La Télécommande in Action
 
-🚀 Built during the Mistral AI MCP Server Hackathon
-
-<br/>
+<div align="center">
+<!-- GitHub READMEs do not allow iframes; use a clickable thumbnail instead -->
+<a href="https://www.youtube.com/watch?v=5K_iIvqFtFc" title="Watch the La Télécommande demo on YouTube">
+  <img src="https://img.youtube.com/vi/5K_iIvqFtFc/hqdefault.jpg" alt="La Télécommande demo — click to watch on YouTube" width="560" />
+  <br />
+  <sub>Click to watch the demo on YouTube</sub>
+  
+</a>
+</div>
 
 ## Authors
 
@@ -60,12 +66,6 @@ The principle is beautifully simple:
 This isn't just for hardcore DevOps professionals. Thanks to our natural language interface, both seasoned infrastructure engineers and developers who prefer to avoid command lines can manage infrastructure with the same ease — just by asking questions and describing what they want to accomplish.
 
 La Télécommande makes remote operations dead-simple for MCP clients while keeping access control transparent and configuration-first, ensuring your infrastructure remains secure and manageable at scale.
-
-## See La Télécommande in Action
-
-<div align="center">
-<iframe width="560" height="315" src="https://www.youtube.com/embed/5K_iIvqFtFc?si=8iPHMvTY6g-PnBj6" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-</div>
 
 ---
 
