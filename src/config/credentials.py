@@ -4,6 +4,8 @@ This module defines lightweight, typed containers representing the minimum
 information required to establish an SSH connection to a remote VM.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 

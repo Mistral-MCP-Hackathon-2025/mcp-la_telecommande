@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import os
 import shlex
+from types import TracebackType
 
 import paramiko
 
@@ -79,7 +80,12 @@ class RemoteExecutor:
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.close()
 
     def connect(self) -> None:
@@ -157,14 +163,24 @@ class RemoteExecutor:
                 if hasattr(paramiko, "Ed25519Key"):
                     return paramiko.Ed25519Key.from_private_key(key_file)
             except Exception as e:
-                raise ValueError(f"Failed to parse OpenSSH private key as Ed25519: {e}")
+                # Do not abort immediately; some OpenSSH keys may be RSA/ECDSA.
+                # We'll try RSA next; if that fails, we re-raise a clearer error.
+                ed25519_err = e
 
         key_file = io.StringIO(key_content)
         try:
             if hasattr(paramiko, "RSAKey"):
                 return paramiko.RSAKey.from_private_key(key_file)
         except Exception as e:
+            # Prefer the RSA error message if Ed25519 also failed; otherwise report Ed25519.
+            if ed25519_err is not None:
+                raise ValueError(
+                    f"Failed to parse OpenSSH private key as Ed25519 ({ed25519_err}) or RSA ({e})."
+                )
             raise ValueError(f"Failed to parse PEM private key as RSA: {e}")
+
+        # If no parser matched, raise a generic error.
+        raise ValueError("Unsupported or unrecognized private key format.")
 
     def run(
         self,

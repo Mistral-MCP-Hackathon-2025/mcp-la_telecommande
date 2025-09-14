@@ -1,15 +1,21 @@
-"""Configuration loader for VM credentials.
+"""Configuration loader for VM credentials and permissions.
 
-Reads a YAML file containing a list of VM entries and exposes helpers to
-list available VM names and obtain typed credentials for a given VM.
+Reads a YAML file containing VMs and optionally users/groups permissions.
+Exposes helpers to list available VM names, obtain typed credentials, and
+perform permission checks based on plaintext API keys.
 """
 
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 import yaml
 
 from .credentials import VMCredentials
+from .permissions import (
+    assert_user_can_access_vm,
+    authorized_vm_names,
+    validate_config_schema,
+)
 
 
 class ConfigManager:
@@ -25,26 +31,30 @@ class ConfigManager:
 
     def __init__(self, config_path: Union[str, Path]):
         self.config_path = Path(config_path)
-        self._vms = self._load_vms_config()
+        self._data = self._load_yaml()
+        # validate schema including optional permissions
+        validate_config_schema(self._data)
+        self._vms = self._index_vms(self._data)
 
-    def _load_vms_config(self) -> dict[str, dict]:
-        """Load and validate VM entries from the YAML configuration file.
-
-        Returns:
-            A mapping of VM name -> raw VM dictionary from YAML.
-
-        Raises:
-            ValueError: If the YAML does not contain the required "vms" field.
-        """
+    def _load_yaml(self) -> dict[str, Any]:
         with open(self.config_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            data = yaml.safe_load(f) or {}
         if "vms" not in data:
             raise ValueError("YAML file must contain a 'vms' field")
+        return data
+
+    @staticmethod
+    def _index_vms(data: dict[str, Any]) -> dict[str, dict]:
         return {vm["name"]: vm for vm in data["vms"]}
 
     def list_vms(self) -> list[str]:
         """Return the list of VM names available in the configuration."""
         return list(self._vms.keys())
+
+    @property
+    def raw(self) -> dict[str, Any]:
+        """Return raw loaded YAML data."""
+        return self._data
 
     def get_vm_creds(self, vm_name: str) -> VMCredentials:
         """Return validated SSH credentials for the requested VM.
@@ -71,3 +81,21 @@ class ConfigManager:
             port,
             key,
         )
+
+    # -------------
+    # Permissions
+    # -------------
+
+    def authorized_vms_for_key(self, api_key: str) -> list[str]:
+        """Return list of VM names the API key is allowed to access.
+
+        If permissions are disabled in the YAML, returns all VMs.
+        """
+        return authorized_vm_names(self._data, api_key)
+
+    def ensure_can_access(self, api_key: str, vm_name: str) -> None:
+        """Raise ValueError if API key cannot access the specified VM.
+
+        Error message intentionally matches tooling expectations: "API key invalid or VM not permitted".
+        """
+        assert_user_can_access_vm(self._data, api_key, vm_name)
