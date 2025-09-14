@@ -5,19 +5,18 @@ import uuid
 from mistralai import Mistral
 
 mistral_api_key = os.getenv("MISTRAL_API_KEY")
-# print("MISTRAL_API_KEY:", mistral_api_key)
 mistral_model = "mistral-embed"
 
 client = Mistral(api_key=mistral_api_key)
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams, PayloadSchemaType
+from qdrant_client.models import Distance, PayloadSchemaType, PointStruct, VectorParams
 
 qdrant_url = os.getenv("QDRANT_URL")
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
 
 qdrant_client = QdrantClient(
-    url="https://43f7d188-39ab-49fd-a399-2f72552bc113.eu-central-1-0.aws.cloud.qdrant.io:6333",
+    url=qdrant_url,
     api_key=qdrant_api_key,
 )
 

@@ -21,9 +21,9 @@ import os
 from pathlib import Path
 
 import httpx
-from mcp.server.fastmcp import FastMCP
 import wandb
 import weave
+from mcp.server.fastmcp import FastMCP
 
 from src.config import ConfigManager
 from src.config.permissions import validate_config_schema
