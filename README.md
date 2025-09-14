@@ -4,6 +4,10 @@
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![FastMCP](https://img.shields.io/badge/Framework-FastMCP-8A2BE2)](https://github.com/fastmcp/fastmcp)
+[![Vector search](https://img.shields.io/badge/Vector-Qdrant-8A2BE2?logo=qdrant&logoColor=white)](https://qdrant.tech)
+[![Embeddings](https://img.shields.io/badge/Embeddings-Mistral%20Embed-FFB703?logo=mistral&logoColor=white)](https://docs.mistral.ai)
+[![Tracing: Weave by W&B](https://img.shields.io/badge/Tracing-Weave%20by%20W%26B-FFBE0B?logo=weightsandbiases&logoColor=000)](https://wandb.ai/site)
+[![Deploy on ALPIC.ai](https://img.shields.io/badge/Deploy-ALPIC.ai-ff69b4?logo=alpic&logoColor=white)](https://alpic.ai/deploy?repo=https://github.com/Mistral-MCP-Hackathon-2025/mcp-ssh)
 [![Paramiko](https://img.shields.io/badge/SSH-Paramiko-2E8B57)](https://www.paramiko.org/)
 [![Lint](https://img.shields.io/badge/Lint-Ruff-46A9E1)](https://github.com/astral-sh/ruff)
 [![Lockfile](https://img.shields.io/badge/Deps-uv.lock-000000)](uv.lock)
@@ -31,6 +35,8 @@ The goal is to make remote ops dead-simple for MCP clients while keeping access 
 - Opt-in permission model (off by default if no users/groups)
 - Clean FastMCP bootstrap with HTTP and stdio transports
 - Strong, friendly error messages: “API key invalid or VM not permitted”
+- Tracing and observability with Weave (by Weights & Biases)
+- Semantic log search & insights powered by Qdrant + Mistral embeddings
 
 ## Quick start
 
@@ -106,6 +112,7 @@ Environment
 - `VERSION`: version segment appended to the fetch URL.
 - `URL`: base URL to fetch the config from.
 - `API_KEY`: API key sent as `X-API-Key` header when fetching.
+- `WANDB_API_KEY`: API key for Weights & Biases; used to authenticate Weave tracing.
 
 Startup behavior
 - On server start, if `CONFIG` is not set, the server expects a file named `<CONFIG_FILENAME>` at the project root.
@@ -152,6 +159,40 @@ All tools are defined in `src/SSH/tools.py` and registered by `src/server.py`.
 - Returns: `{ command, status: 'executed', stdout, stderr, return_code }`
 - Errors: `ValueError` on authorization failure, SSH/auth issues, or non-zero exit (includes stderr).
 
+5) ssh_search_logs
+- Purpose: Semantic search across SSH history (commands, stdout, stderr).
+- Args:
+  - `query` (string, required): natural language (e.g. "oom killer", "failed scp to backup").
+  - `collection` (string, optional): one of `commands` | `stdout` | `stderr` (default: `commands`).
+  - `host_filter` (string|null, optional): only from this host.
+  - `user_filter` (string|null, optional): only from this user.
+  - `time_hours` (int|null, optional): restrict to last N hours.
+  - `limit` (int, optional): max results (default: 10).
+- Returns: `{ query, total_found, results[] }` where each result contains:
+  - `relevance_score` (float), `host` (string), `command` (string), `job_id` (string), `timestamp` (float), `formatted_time` (string), `stdout` (string), `stderr` (string), `return_code` (int|null)
+- Example:
+  - Find recent OOM errors: `{ "query": "oom killer", "collection": "stderr", "time_hours": 6 }`
+
+6) ssh_get_statistics
+- Purpose: Aggregate usage stats over SSH command history.
+- Args:
+  - `time_hours` (int, optional): lookback window (default: 24)
+  - `user_filter` (string|null, optional): limit to one user
+  - `host_filter` (string|null, optional): limit to one host
+- Returns: `{ time_period_hours, commands_executed, successful_commands, failed_commands, most_used_hosts, most_common_commands, recent_errors[] }`
+  - `recent_errors[]` elements: `{ host, command, error, timestamp }`
+- Notes: success/failed based on `return_code == 0`.
+
+7) ssh_suggest_commands
+- Purpose: Suggest commands from prior successful executions using semantic similarity.
+- Args:
+  - `context` (string, required): natural language goal, e.g. "check disk space"
+  - `host` (string|null, optional): bias to a specific host
+  - `limit` (int, optional): number of suggestions (default: 5)
+- Returns: `{ context, host, total_suggestions, suggestions[] }`
+  - Suggestions have: `{ command, relevance_score, host, last_used, success_rate }`
+- Notes: only sourced from history where `return_code == 0`; duplicates removed by command.
+
 Usage flow (recommended)
 - Call `ssh_list_vms` first to discover allowed VMs.
 - Optionally call `ssh_is_vm_up` to preflight connectivity.
@@ -183,8 +224,60 @@ args: { "vm_name": "vm1", "command": "uname -a" }
 
 ## Development
 - Lint/format: Ruff (configured in `pyproject.toml`).
-- Tracing: Weave initialized as `mcp-ssh`.
+- Tracing: Weave (by Weights & Biases) initialized as `mcp-ssh`.
 - Entry points: `main.py` (HTTP by default), `src/server.py` (FastMCP instance, tool registration).
+
+### Module layout
+
+- `src/SSH/tools.py`: Public MCP tools for SSH. Thin orchestration layer only.
+- `src/SSH/remote_executor.py`: Paramiko-based SSH client wrapper.
+- `src/SSH/utils/`:
+  - `auth.py`: Authorization header parsing helpers.
+  - `masking.py`: Safe masking for logging (avoid secret leakage).
+  - `network.py`: TCP reachability and latency check utilities.
+  - `osinfo.py`: Distro parsing and package manager detection.
+  - `types.py`: Shared TypedDict result contracts for tools.
+
+Config and permissions
+- `src/config/manager.py`: Loads YAML, indexes VMs, exposes helpers.
+- `src/config/permissions.py`: Optional users/groups model and checks.
+- `src/config/credentials.py`: Typed VM credential container.
+
+## Semantic log search (Qdrant + Mistral)
+
+This repo can log each SSH operation and index it for semantic search and analytics.
+
+How it works
+- `src/qdrant/log_manager.py` embeds command/stdout/stderr with Mistral Embed and upserts into Qdrant.
+- Collections are auto-created (if missing) on first use, along with payload indexes used for filters.
+- Tools in `src/qdrant/tools.py` query Qdrant to power search, stats, and suggestions.
+
+Collections & payload schema
+- `ssh_commands` (vector size 1024, cosine)
+  - payload: `job_id` (str), `host` (str), `user` (str), `command` (str), `timestamp` (float), `return_code` (int)
+- `ssh_stdout` (vector size 1024, cosine)
+  - payload: same base fields + `stdout` (str)
+- `ssh_stderr` (vector size 1024, cosine)
+  - payload: same base fields + `stderr` (str)
+
+Environment variables
+- `QDRANT_URL`: e.g. `http://localhost:6333` or hosted endpoint
+- `QDRANT_API_KEY`: if your Qdrant instance requires auth
+- `MISTRAL_API_KEY`: for embeddings
+
+Enable logging
+- Logging is invoked by the SSH executor via `log_ssh_operation(job_id, host, user, command, result)`.
+- If you only run the core SSH tools and never call the logger, Qdrant collections will stay empty.
+
+Query examples
+- Search last 12h of failed commands: `ssh_search_logs { query: "failed", collection: "commands", time_hours: 12 }`
+- Get usage stats for a host: `ssh_get_statistics { host_filter: "vm1", time_hours: 72 }`
+- Suggest common disk checks: `ssh_suggest_commands { context: "check disk space" }`
+
+Troubleshooting
+- Missing packages: ensure `mistralai` and `qdrant-client` are installed (see `pyproject.toml`).
+- Empty results: verify the SSH executor is calling `log_ssh_operation` and that env vars point to your Qdrant.
+- Embedding limits: stdout/stderr are truncated to ~30k characters to fit model limits.
 
 ## Troubleshooting
 - fastmcp not found: activate your venv; ensure FastMCP installed.

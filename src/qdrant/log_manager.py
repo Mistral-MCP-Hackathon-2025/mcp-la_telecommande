@@ -1,16 +1,17 @@
 import os
 import time
 import uuid
+from typing import Any
 
 from mistralai import Mistral
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PayloadSchemaType, PointStruct, VectorParams
 
 mistral_api_key = os.getenv("MISTRAL_API_KEY")
 mistral_model = "mistral-embed"
 
 client = Mistral(api_key=mistral_api_key)
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PayloadSchemaType, PointStruct, VectorParams
 
 qdrant_url = os.getenv("QDRANT_URL")
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
@@ -19,10 +20,6 @@ qdrant_client = QdrantClient(
     url=qdrant_url,
     api_key=qdrant_api_key,
 )
-
-# print("QDRANT_API_KEY:", qdrant_api_key)
-# print("MISTRAL_API_KEY:", mistral_api_key)
-
 
 def embed_text(text: str) -> list[float]:
     response = client.embeddings.create(
@@ -37,8 +34,8 @@ def ensure_collections_exist():
         "ssh_stdout": {
             "description": "SSH stdout logs with semantic search",
             "indexes": {
-                "host": PayloadSchemaType.KEYWORD,
-                "user": PayloadSchemaType.KEYWORD,
+                "vm_name": PayloadSchemaType.KEYWORD,
+                "requested_by": PayloadSchemaType.KEYWORD,
                 "command": PayloadSchemaType.KEYWORD,
                 "job_id": PayloadSchemaType.KEYWORD,
                 "timestamp": PayloadSchemaType.FLOAT,
@@ -48,8 +45,8 @@ def ensure_collections_exist():
         "ssh_commands": {
             "description": "SSH commands executed with metadata",
             "indexes": {
-                "host": PayloadSchemaType.KEYWORD,
-                "user": PayloadSchemaType.KEYWORD,
+                "vm_name": PayloadSchemaType.KEYWORD,
+                "requested_by": PayloadSchemaType.KEYWORD,
                 "command": PayloadSchemaType.KEYWORD,
                 "job_id": PayloadSchemaType.KEYWORD,
                 "timestamp": PayloadSchemaType.FLOAT,
@@ -59,8 +56,8 @@ def ensure_collections_exist():
         "ssh_stderr": {
             "description": "SSH stderr outputs",
             "indexes": {
-                "host": PayloadSchemaType.KEYWORD,
-                "user": PayloadSchemaType.KEYWORD,
+                "vm_name": PayloadSchemaType.KEYWORD,
+                "requested_by": PayloadSchemaType.KEYWORD,
                 "command": PayloadSchemaType.KEYWORD,
                 "job_id": PayloadSchemaType.KEYWORD,
                 "timestamp": PayloadSchemaType.FLOAT,
@@ -97,7 +94,13 @@ def ensure_collections_exist():
                     )
 
 
-def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: dict):
+def log_ssh_operation(
+    job_id: str,
+    vm_name: str,
+    command: str,
+    result: dict[str, Any],
+    requested_by: str | None = None,
+):
     ensure_collections_exist()
     timestamp = time.time()
 
@@ -111,8 +114,8 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
                 vector=command_embedding,
                 payload={
                     "job_id": job_id,
-                    "host": host,
-                    "user": user,
+                    "vm_name": vm_name,
+                    "requested_by": requested_by or "",
                     "command": command,
                     "timestamp": timestamp,
                     "return_code": result["return_code"],
@@ -137,8 +140,8 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
                     vector=stdout_embedding,
                     payload={
                         "job_id": job_id,
-                        "host": host,
-                        "user": user,
+                        "vm_name": vm_name,
+                        "requested_by": requested_by or "",
                         "command": command,
                         "timestamp": timestamp,
                         "stdout": stdout,
@@ -149,8 +152,8 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
         )
 
     # Log stderr lines (errors)
-    error = result.get("stderr")
-    if len(error) > 30000:
+    error = result.get("stderr") or ""
+    if error and len(error) > 30000:
         error = error[:30000]
 
     if error:
@@ -163,8 +166,8 @@ def log_ssh_operation(job_id: str, host: str, user: str, command: str, result: d
                     vector=stderr_embedding,
                     payload={
                         "job_id": job_id,
-                        "host": host,
-                        "user": user,
+                        "vm_name": vm_name,
+                        "requested_by": requested_by or "",
                         "command": command,
                         "timestamp": timestamp,
                         "stderr": error,

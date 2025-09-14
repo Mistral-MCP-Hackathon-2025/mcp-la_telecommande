@@ -1,9 +1,8 @@
 """MCP tools that expose SSH actions.
 
 This module registers MCP tools for listing accessible VMs and running commands
-remotely via the `RemoteExecutor`. Return values are strongly typed for
-predictability. All tools document authorization expectations and error modes
-to avoid misuse by MCP clients.
+remotely via the `RemoteExecutor`. Helpers and TypedDicts are organized in
+`src/SSH/utils/` for clarity and reuse.
 
 Tools provided:
 - `ssh_list_vms()`: Return only the VM names the caller may access.
@@ -13,10 +12,7 @@ Tools provided:
 """
 
 # ruff: noqa: I001
-from typing import Annotated, TypedDict
-import socket
-import time
-import re
+from typing import Annotated
 
 import paramiko
 import weave
@@ -25,81 +21,21 @@ import uuid
 from src.qdrant.log_manager import log_ssh_operation
 from src.server import mcp, config_manager
 from src.config import VMCredentials
-from src.config.permissions import permissions_enabled
+from src.config.permissions import permissions_enabled, find_user_by_api_key
 
 from .remote_executor import RemoteExecutor
 from mcp.server.fastmcp import Context
 
-
-def mask_value(value: str | None) -> str:
-    """Mask a value for logging by replacing every other character with "*".
-
-    Args:
-        value: A string to mask, or None.
-
-    Returns:
-        A masked representation; empty string if value is falsy.
-    """
-    if not value:
-        return ""
-    return "".join("*" if i % 2 else c for i, c in enumerate(value))
-
-
-def _extract_api_key_from_headers(ctx: Context) -> str | None:
-    """Retrieve API key from the Authorization header in request context.
-
-    Accepts either `Authorization: Bearer <API_KEY>` or a raw value.
-    Returns the extracted API key string or None if not found.
-    """
-    # Best-effort: headers may be on request_context.request.headers in HTTP mode
-    hdrs = None
-    try:
-        req = getattr(ctx.request_context, "request", None)
-        if req is not None:
-            hdrs = getattr(req, "headers", None)
-        if hdrs is None:
-            hdrs = getattr(ctx.request_context, "headers", None)
-        if hdrs is None:
-            meta = getattr(ctx.request_context, "meta", None)
-            if isinstance(meta, dict):
-                hdrs = meta.get("headers")
-    except Exception:
-        hdrs = None
-
-    auth = None
-    if hdrs:
-        # support dict-like headers
-        auth = hdrs.get("Authorization") or hdrs.get("authorization")
-    if not auth:
-        return None
-    auth = str(auth).strip()
-    if auth.lower().startswith("bearer "):
-        return auth[7:].strip()
-    return auth or None
-
-
-class BaseResult(TypedDict):
-    """Base shape for SSH tool results."""
-
-    status: str
-    stdout: str
-    stderr: str
-    return_code: int
-
-
-class RunCommandResult(BaseResult):
-    """Result shape for the `run_command` tool."""
-
-    command: str
-
-
-class ListVMsResult(TypedDict):
-    """Shape for VM listing results.
-
-    Attributes:
-        vms: The list of VM names the caller can access.
-    """
-    vms: list[str]
+from src.SSH.utils.auth import extract_api_key_from_headers
+from src.SSH.utils.masking import mask_value
+from src.SSH.utils.network import tcp_reachable
+from src.SSH.utils.osinfo import parse_os_release, detect_pkg_manager
+from src.SSH.utils.types import (
+    ListVMsResult,
+    RunCommandResult,
+    VMUpResult,
+    VMInfoResult,
+)
 
 
 # -----------------------
@@ -107,55 +43,8 @@ class ListVMsResult(TypedDict):
 # -----------------------
 
 
-def _tcp_reachable(
-    host: str, port: int, timeout: float = 3.0
-) -> tuple[bool, float | None, str | None]:
-    """Attempt a TCP connection and measure latency.
-
-    Returns:
-        (reachable, latency_ms, reason)
-    """
-    start = time.monotonic()
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            elapsed_ms = (time.monotonic() - start) * 1000.0
-            return True, round(elapsed_ms, 2), None
-    except Exception as e:
-        return False, None, str(e)
-
-
-def _parse_os_release(text: str) -> dict[str, str | None]:
-    """Parse /etc/os-release content into a small dict.
-
-    Extract common fields and strip optional quotes.
-    """
-    fields = {k: None for k in ("ID", "VERSION_ID", "NAME", "PRETTY_NAME")}
-    line_re = re.compile(r"^([A-Z_]+)=(.*)$")
-    for line in text.splitlines():
-        m = line_re.match(line.strip())
-        if not m:
-            continue
-        k, v = m.group(1), m.group(2)
-        if k not in fields:
-            continue
-        # Remove optional surrounding quotes
-        if len(v) >= 2 and ((v[0] == v[-1] == '"') or (v[0] == v[-1] == "'")):
-            v = v[1:-1]
-        fields[k] = v
-    return {
-        "id": fields["ID"],
-        "version_id": fields["VERSION_ID"],
-        "name": fields["NAME"],
-        "pretty_name": fields["PRETTY_NAME"],
-    }
-
-
-def _detect_pkg_manager(out_which: str) -> str | None:
-    """Given a combined output of several `command -v` checks, infer a package manager."""
-    for mgr in ("apt", "dnf", "yum", "zypper", "pacman", "apk"):
-        if re.search(rf"\b{mgr}\b", out_which):
-            return mgr
-    return None
+# Local helpers moved to utils: extract_api_key_from_headers, mask_value,
+# tcp_reachable, parse_os_release, detect_pkg_manager
 
 
 @mcp.tool(
@@ -179,7 +68,7 @@ def ssh_list_vms(ctx: Context) -> ListVMsResult:
         - If disabled (no users/groups defined), all VMs are returned.
     """
     if permissions_enabled(config_manager.raw):
-        api_key = _extract_api_key_from_headers(ctx)
+        api_key = extract_api_key_from_headers(ctx)
         if not api_key:
             raise ValueError("API key invalid or VM not permitted")
         return {"vms": config_manager.authorized_vms_for_key(api_key)}
@@ -220,13 +109,18 @@ def run_command(
     """
     # Enforce authorization if permissions are enabled
     if permissions_enabled(config_manager.raw):
-        api_key = _extract_api_key_from_headers(ctx)
+        api_key = extract_api_key_from_headers(ctx)
         if not api_key:
             raise ValueError("API key invalid or VM not permitted")
         config_manager.ensure_can_access(api_key, vm_name)
+        user_obj = find_user_by_api_key(config_manager.raw, api_key)
+        requested_by = user_obj.get("name") if user_obj else None
+    else:
+        requested_by = None
 
     creds: VMCredentials = config_manager.get_vm_creds(vm_name=vm_name)
     job_id = str(uuid.uuid4())
+    stdout, stderr, rc = "", "", 0
     try:
         with RemoteExecutor(
             creds.host, creds.user, port=creds.port, key=creds.key
@@ -238,10 +132,10 @@ def run_command(
 
             log_ssh_operation(
                 job_id=job_id,
-                host=creds.host,
-                user=creds.user,
+                vm_name=vm_name,
                 command=command,
                 result={"stdout": stdout, "stderr": stderr, "return_code": rc},
+                requested_by=requested_by,
             )
 
             return {
@@ -257,14 +151,14 @@ def run_command(
         )
         log_ssh_operation(
             job_id=job_id,
-            host=creds.host,
-            user=creds.user,
+            vm_name=vm_name,
             command=command,
             result={
                 "stdout": stdout,
                 "stderr": f"Authentication failed: {stderr}",
                 "return_code": rc,
             },
+            requested_by=requested_by,
         )
         raise ValueError(
             "SSH authentication failed. Check your USERNAME and KEY_FILENAME environment variables."
@@ -275,14 +169,14 @@ def run_command(
         )
         log_ssh_operation(
             job_id=job_id,
-            host=creds.host,
-            user=creds.user,
+            vm_name=vm_name,
             command=command,
             result={
                 "stdout": "",
                 "stderr": f"SSH connection failed: {e}",
                 "return_code": rc,
             },
+            requested_by=requested_by,
         )
         raise ValueError(f"SSH connection failed: {e}")
     except Exception as e:
@@ -291,10 +185,10 @@ def run_command(
         )
         log_ssh_operation(
             job_id=job_id,
-            host=creds.host,
-            user=creds.user,
+            vm_name=vm_name,
             command=command,
             result={"stdout": "", "stderr": str(e), "return_code": rc},
+            requested_by=requested_by,
         )
         raise ValueError(f"Unexpected error during SSH operation: {e}")
 
@@ -302,15 +196,6 @@ def run_command(
 # ---------------------------------
 # New tool: quick VM reachability
 # ---------------------------------
-
-
-class VMUpResult(TypedDict):
-    vm: str
-    host: str
-    port: int
-    reachable: bool
-    latency_ms: float | None
-    reason: str | None
 
 
 @mcp.tool(
@@ -328,12 +213,12 @@ class VMUpResult(TypedDict):
 def ssh_is_vm_up(vm_name: str, ctx: Context) -> VMUpResult:
     """Return whether the VM's SSH port is reachable along with latency."""
     if permissions_enabled(config_manager.raw):
-        api_key = _extract_api_key_from_headers(ctx)
+        api_key = extract_api_key_from_headers(ctx)
         if not api_key:
             raise ValueError("API key invalid or VM not permitted")
         config_manager.ensure_can_access(api_key, vm_name)
     creds: VMCredentials = config_manager.get_vm_creds(vm_name=vm_name)
-    reachable, latency_ms, reason = _tcp_reachable(creds.host, creds.port)
+    reachable, latency_ms, reason = tcp_reachable(creds.host, creds.port)
     return {
         "vm": vm_name,
         "host": creds.host,
@@ -349,36 +234,7 @@ def ssh_is_vm_up(vm_name: str, ctx: Context) -> VMUpResult:
 # ---------------------------------
 
 
-class DistroInfo(TypedDict, total=False):
-    id: str | None
-    version_id: str | None
-    name: str | None
-    pretty_name: str | None
-
-
-class PlatformInfo(TypedDict, total=False):
-    kernel_release: str | None
-    machine: str | None
-    init: str | None
-    pkg_manager: str | None
-
-
-class NetworkInfo(TypedDict, total=False):
-    hostname: str | None
-    fqdn: str | None
-    addresses: list[str]
-
-
-class VMInfoResult(TypedDict, total=False):
-    vm: str
-    host: str
-    port: int
-    status: str
-    distro: DistroInfo
-    platform: PlatformInfo
-    network: NetworkInfo
-    user: dict[str, str | None]
-    notes: list[str]
+# Types imported at top: VMInfoResult
 
 
 @mcp.tool(
@@ -395,7 +251,7 @@ class VMInfoResult(TypedDict, total=False):
 @weave.op()
 def ssh_vm_distro_info(vm_name: str, ctx: Context) -> VMInfoResult:
     if permissions_enabled(config_manager.raw):
-        api_key = _extract_api_key_from_headers(ctx)
+        api_key = extract_api_key_from_headers(ctx)
         if not api_key:
             raise ValueError("API key invalid or VM not permitted")
         config_manager.ensure_can_access(api_key, vm_name)
@@ -419,7 +275,7 @@ def ssh_vm_distro_info(vm_name: str, ctx: Context) -> VMInfoResult:
             # 1) Distro: /etc/os-release
             out, err, rc = rx.run("cat /etc/os-release 2>/dev/null || true")
             if out.strip():
-                result["distro"] = _parse_os_release(out)
+                result["distro"] = parse_os_release(out)
             else:
                 # Fallback: lsb_release -a
                 out2, err2, rc2 = rx.run("lsb_release -a 2>/dev/null || true")
@@ -460,7 +316,7 @@ def ssh_vm_distro_info(vm_name: str, ctx: Context) -> VMInfoResult:
             # 4) Package manager detection
             check_pm = "command -v apt dnf yum zypper pacman apk 2>/dev/null || true"
             out, _, _ = rx.run(check_pm)
-            result["platform"]["pkg_manager"] = _detect_pkg_manager(out)
+            result["platform"]["pkg_manager"] = detect_pkg_manager(out)
 
             # 5) User and host basics
             out, _, _ = rx.run("whoami")
