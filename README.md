@@ -28,7 +28,7 @@
 
 ## Authors
 
-[Lucas Duport](https://www.linkedin.com/in/lucas-duport/) • [Armand Blin](https://www.linkedin.com/in/armandblin/) • [Arthur Courselle](https://www.linkedin.com/in/arthur-courselle/) • [Samy Yacef](https://www.linkedin.com/in/samy-yacef-b88543146/) • [Flavien Goeffray](https://www.linkedin.com/in/flavien-geoffray/)
+[Lucas Duport](https://www.linkedin.com/in/lucas-duport/) • [Armand Blin](https://www.linkedin.com/in/armandblin/) • [Arthur Courselle](https://www.linkedin.com/in/arthur-courselle/) • [Samy Yacef](https://www.linkedin.com/in/samy-yacef-b88543146/) • [Flavien Geoffray](https://www.linkedin.com/in/flavien-geoffray/)
 
 </div>
 
